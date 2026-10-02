@@ -15,24 +15,28 @@ public:
     // TWEAKABLE PARAMETERS (Tune hill sizes, wavelengths, and steepness)
     // ========================================================================
     struct Config {
-        float baseY{380.0f};           // Baseline ground height in virtual canvas coordinates
-        float startFlatLength{300.0f}; // Safe flat starting distance before hills begin
+        float baseY{390.0f};           // Baseline ground height in virtual canvas coordinates
+        float startFlatLength{250.0f}; // Safe starting runway before hills begin
 
-        // Octave 1: Long rolling hills
-        float amp1{55.0f};
-        float freq1{0.0035f};
+        // Octave 1: Major mountain ranges & deep rolling valleys
+        float amp1{95.0f};
+        float freq1{0.0028f};
 
-        // Octave 2: Medium steep hills & crests
-        float amp2{35.0f};
-        float freq2{0.0085f};
+        // Octave 2: Steep launch ramps, crests & sharp ascents
+        float amp2{65.0f};
+        float freq2{0.0075f};
 
-        // Octave 3: Short bumps and ripples
-        float amp3{12.0f};
-        float freq3{0.0220f};
+        // Octave 3: Dynamic rolling moguls & hillocks
+        float amp3{22.0f};
+        float freq3{0.0180f};
 
-        // Difficulty scaling (hills grow taller over distance)
-        float growthFactor{0.00004f};  // Amplitude increase per pixel traveled
-        float maxAmplitudeBonus{80.0f};// Cap on maximum difficulty scaling
+        // Octave 4: Rough dirt bumps & suspension whoops
+        float amp4{12.0f};
+        float freq4{0.0360f};
+
+        // Difficulty scaling (hills grow taller and steeper over distance)
+        float growthFactor{0.00007f};   // Amplitude increase per pixel traveled
+        float maxAmplitudeBonus{120.0f};// Cap on maximum difficulty scaling
     };
 
     SineTerrainGenerator();

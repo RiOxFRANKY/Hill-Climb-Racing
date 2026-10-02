@@ -278,20 +278,26 @@ void GameWidget::paintVehicle(QPainter& painter) {
     painter.save();
 
     // 1. Suspension Arms / Struts (drawn behind wheels and chassis)
+    float chassisRad = data.chassis.angleDegrees * (3.14159265f / 180.0f);
+    float cosA = std::cos(chassisRad);
+    float sinA = std::sin(chassisRad);
+
+    // Chassis wheel mount positions in world space
+    QPointF rearMount(data.chassis.position.x + (-30.0f * cosA - 8.0f * sinA),
+                      data.chassis.position.y + (-30.0f * sinA + 8.0f * cosA));
+    QPointF frontMount(data.chassis.position.x + (30.0f * cosA - 8.0f * sinA),
+                       data.chassis.position.y + (30.0f * sinA + 8.0f * cosA));
+
     painter.setPen(QPen(QColor(51, 65, 85), 4.0f, Qt::SolidLine, Qt::RoundCap));
-    painter.drawLine(QPointF(data.chassis.position.x, data.chassis.position.y),
-                     QPointF(data.rearWheel.position.x, data.rearWheel.position.y));
-    painter.drawLine(QPointF(data.chassis.position.x, data.chassis.position.y),
-                     QPointF(data.frontWheel.position.x, data.frontWheel.position.y));
+    painter.drawLine(rearMount, QPointF(data.rearWheel.position.x, data.rearWheel.position.y));
+    painter.drawLine(frontMount, QPointF(data.frontWheel.position.x, data.frontWheel.position.y));
 
     // Spring coil accents
     painter.setPen(QPen(QColor(220, 38, 38), 2.5f));
-    QPointF rearMid = (QPointF(data.chassis.position.x, data.chassis.position.y) +
-                       QPointF(data.rearWheel.position.x, data.rearWheel.position.y)) * 0.5;
+    QPointF rearMid = (rearMount + QPointF(data.rearWheel.position.x, data.rearWheel.position.y)) * 0.5;
     painter.drawEllipse(rearMid, 4.0, 4.0);
 
-    QPointF frontMid = (QPointF(data.chassis.position.x, data.chassis.position.y) +
-                        QPointF(data.frontWheel.position.x, data.frontWheel.position.y)) * 0.5;
+    QPointF frontMid = (frontMount + QPointF(data.frontWheel.position.x, data.frontWheel.position.y)) * 0.5;
     painter.drawEllipse(frontMid, 4.0, 4.0);
 
     // 2. Rear Wheel

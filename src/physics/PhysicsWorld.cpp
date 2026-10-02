@@ -55,18 +55,20 @@ PhysicsWorld::PhysicsWorld(const Config& config)
 }
 
 void PhysicsWorld::reset(Vec2 spawnPos) {
-    m_chassis.position = spawnPos;
+    // spawnPos represents visual car spawn position.
+    // Center of Mass is positioned at spawnPos + centerOfMassOffset
+    m_chassis.position = spawnPos + m_config.centerOfMassOffset;
     m_chassis.velocity = Vec2(0.0f, 0.0f);
     m_chassis.angle = 0.0f;
     m_chassis.angularVelocity = 0.0f;
 
-    m_rearWheel.position = spawnPos + m_rearMountLocal + Vec2(0.0f, m_config.restLength);
+    m_rearWheel.position = m_chassis.position + rearMountCoM() + Vec2(0.0f, m_config.restLength);
     m_rearWheel.velocity = Vec2(0.0f, 0.0f);
     m_rearWheel.angle = 0.0f;
     m_rearWheel.angularVelocity = 0.0f;
     m_rearWheel.isGrounded = false;
 
-    m_frontWheel.position = spawnPos + m_frontMountLocal + Vec2(0.0f, m_config.restLength);
+    m_frontWheel.position = m_chassis.position + frontMountCoM() + Vec2(0.0f, m_config.restLength);
     m_frontWheel.velocity = Vec2(0.0f, 0.0f);
     m_frontWheel.angle = 0.0f;
     m_frontWheel.angularVelocity = 0.0f;
@@ -90,7 +92,9 @@ void PhysicsWorld::addTerrainSegment(Vec2 p1, Vec2 p2, float friction) {
 
 VehiclePhysicsState PhysicsWorld::getVehicleState() const {
     VehiclePhysicsState s;
-    s.chassis.position = m_chassis.position;
+    // Visual chassis position = Center of Mass minus rotated CoM offset
+    Vec2 visualPos = m_chassis.position - m_config.centerOfMassOffset.rotated(m_chassis.angle);
+    s.chassis.position = visualPos;
     s.chassis.angleDegrees = m_chassis.angle * RAD_TO_DEG;
 
     s.rearWheel.position = m_rearWheel.position;
@@ -101,8 +105,8 @@ VehiclePhysicsState PhysicsWorld::getVehicleState() const {
     s.frontWheel.angleDegrees = m_frontWheel.angle * RAD_TO_DEG;
     s.frontWheelGrounded = m_frontWheel.isGrounded;
 
-    // Driver head world position
-    Vec2 headWorld = m_chassis.position + m_headMountLocal.rotated(m_chassis.angle);
+    // Driver head world position anchored relative to visual chassis
+    Vec2 headWorld = visualPos + visualHeadMount().rotated(m_chassis.angle);
     s.driverHead.position = headWorld;
     s.driverHead.angleDegrees = s.chassis.angleDegrees;
 
@@ -135,30 +139,47 @@ void PhysicsWorld::subStep(float subDt) {
     solveWheelTerrainCollision(m_rearWheel, subDt);
     solveWheelTerrainCollision(m_frontWheel, subDt);
 
-    // 3. Solve suspensions (Spring-damper forces connecting chassis and wheels)
-    solveSuspension(m_rearWheel, m_rearMountLocal, subDt);
-    solveSuspension(m_frontWheel, m_frontMountLocal, subDt);
+    // 3. Solve suspensions (Spring-damper forces connecting chassis and wheels relative to CoM)
+    solveSuspension(m_rearWheel, rearMountCoM(), subDt);
+    solveSuspension(m_frontWheel, frontMountCoM(), subDt);
 
-    // 4. In-Air Pitch Control vs Ground Alignment
-    bool inAir = (!m_rearWheel.isGrounded && !m_frontWheel.isGrounded);
+    // 4. Airborne dynamics & Pitch Behavior vs Ground Alignment
+    bool rearGrounded = m_rearWheel.isGrounded;
+    bool frontGrounded = m_frontWheel.isGrounded;
+    bool inAir = (!rearGrounded && !frontGrounded);
+    bool bothGrounded = (rearGrounded && frontGrounded);
+
     if (inAir) {
+        // Natural airborne nose-dive (Hill Climb Racing signature mechanic):
+        // Front-heavy mass distribution and aerodynamic forward airflow naturally tilt
+        // the nose down slowly and progressively when launched off a hill or edge.
+        float forwardSpeed = std::max(0.0f, m_chassis.velocity.x);
+        float speedFactor = clamp(forwardSpeed / 300.0f, 0.45f, 1.4f);
+        float naturalNoseDive = (m_config.airNoseDiveTorque * speedFactor / m_config.chassisInertia) * subDt;
+        m_chassis.angularVelocity += naturalNoseDive;
+
+        // Player aerial pitch control:
+        // Gas (Right Arrow / D): smoothly pulls nose up to level out or counter dive
+        // Brake (Left Arrow / A): actively dips nose down faster for steep landing slopes
         if (m_throttle > 0.05f) {
-            // Gas in air pitches nose up smoothly
             m_chassis.angularVelocity -= (m_config.airTorque / m_config.chassisInertia) * m_throttle * subDt;
         } else if (m_throttle < -0.05f) {
-            // Brake in air pitches nose down smoothly
             m_chassis.angularVelocity -= (m_config.airTorque / m_config.chassisInertia) * m_throttle * subDt;
         }
-    } else {
-        // When grounded, align chassis naturally with wheel baseline (prevents random toppling/tumbling)
+    } else if (bothGrounded) {
+        // When BOTH wheels are on the ground, align chassis with the wheel baseline slope
         float wheelBaseAngle = std::atan2(m_frontWheel.position.y - m_rearWheel.position.y,
                                           m_frontWheel.position.x - m_rearWheel.position.x);
         float angleDiff = wheelBaseAngle - m_chassis.angle;
         while (angleDiff > PI) angleDiff -= 2.0f * PI;
         while (angleDiff < -PI) angleDiff += 2.0f * PI;
 
-        // Apply restoring torque to keep chassis stable over terrain
+        // Apply restoring torque to keep chassis aligned with terrain slope
         m_chassis.angularVelocity += angleDiff * (m_config.groundStabilizer * subDt);
+    } else {
+        // One wheel airborne (e.g., front wheel driving off a cliff or ledge)
+        // With no front ground support, gravity on the front-biased CoM and upward rear suspension
+        // pivot naturally rotate the chassis nose-down immediately off the edge!
     }
 
     // 5. Integrate chassis linear velocity & position
@@ -219,9 +240,9 @@ void PhysicsWorld::solveSuspension(WheelBody& wheel, const Vec2& mountLocal, flo
     wheel.velocity += (forceOnWheel / m_config.wheelMass) * subDt;
     m_chassis.velocity += (forceOnChassis / m_config.chassisMass) * subDt;
 
-    // Chassis torque produced by suspension force
+    // Chassis torque produced by suspension force around Center of Mass
     Vec2 rChassis = mountWorld - m_chassis.position;
-    float torque = rChassis.cross(forceOnChassis) * 0.35f;
+    float torque = rChassis.cross(forceOnChassis) * 0.40f;
     m_chassis.angularVelocity += (torque / m_config.chassisInertia) * subDt;
 
     // 5. RIGID STRUT CONSTRAINT:
@@ -314,16 +335,17 @@ void PhysicsWorld::solveWheelTerrainCollision(WheelBody& wheel, float subDt) {
 }
 
 void PhysicsWorld::solveChassisTerrainCollision(float subDt) {
-    // 3 bottom bumper probes elevated so normal driving never touches ground
-    const Vec2 probes[3] = {
+    // 3 bottom bumper probes relative to visual center
+    const Vec2 visualProbes[3] = {
         Vec2(-34.0f, 15.0f),
         Vec2(0.0f, 16.0f),
         Vec2(34.0f, 15.0f)
     };
     float probeRadius = 4.0f;
+    Vec2 visualPos = m_chassis.position - m_config.centerOfMassOffset.rotated(m_chassis.angle);
 
-    for (const auto& probeLocal : probes) {
-        Vec2 probeWorld = m_chassis.position + probeLocal.rotated(m_chassis.angle);
+    for (const auto& probeLocal : visualProbes) {
+        Vec2 probeWorld = visualPos + probeLocal.rotated(m_chassis.angle);
 
         for (const auto& seg : m_terrainSegments) {
             Vec2 closest, normal;
@@ -350,7 +372,8 @@ void PhysicsWorld::solveChassisTerrainCollision(float subDt) {
 }
 
 bool PhysicsWorld::checkHeadTerrainCollision() {
-    Vec2 headWorld = m_chassis.position + m_headMountLocal.rotated(m_chassis.angle);
+    Vec2 visualPos = m_chassis.position - m_config.centerOfMassOffset.rotated(m_chassis.angle);
+    Vec2 headWorld = visualPos + visualHeadMount().rotated(m_chassis.angle);
 
     for (const auto& seg : m_terrainSegments) {
         Vec2 closest, normal;

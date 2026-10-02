@@ -20,14 +20,21 @@ public:
         float gravity{980.0f};           // Downward gravity in px/s^2
         int   subSteps{16};              // Simulation sub-steps per frame for stability
 
-        // Chassis properties
-        float chassisMass{90.0f};        // Scaled chassis mass (kg)
-        float chassisInertia{65000.0f};  // High moment of inertia to resist toppling
+        // Chassis mass distribution & Center of Mass (CoM)
+        // Front-heavy body mass (60% front, 40% rear) and elevated CoM for natural airborne nose-dive
+        float chassisMass{90.0f};        // Total chassis mass (kg)
+        float frontChassisMass{54.0f};   // Front body mass (kg) - heavier front
+        float rearChassisMass{36.0f};    // Rear body mass (kg)
+        Vec2  centerOfMassOffset{6.0f, -2.0f}; // CoM offset relative to visual center: +X (front), -Y (elevated above bottom)
+        float chassisInertia{62000.0f};  // Moment of inertia for realistic rotation
         float chassisHalfWidth{44.0f};   // Half width (px)
         float chassisHalfHeight{20.0f};  // Half height (px)
-        float airTorque{18000.0f};       // Controllable pitch torque when airborne
-        float angularDamping{3.2f};      // Angular drag eliminating wild tumbling
-        float groundStabilizer{18.0f};   // Restoring alignment to wheel plane when grounded
+
+        // Airborne & pitch dynamics
+        float airNoseDiveTorque{42000.0f}; // Natural gradual forward nose-dive torque when airborne
+        float airTorque{28000.0f};         // Player aerial pitch control (Gas = pitch up, Brake = pitch down)
+        float angularDamping{2.2f};        // Angular damping (keeps motion smooth without freezing pitch)
+        float groundStabilizer{18.0f};     // Restoring alignment to wheel plane when BOTH wheels grounded
 
         // Suspension properties (Taut, stiff, strictly bounded travel)
         float springK{18000.0f};         // Stiff spring preventing excessive stretching
@@ -77,11 +84,21 @@ private:
     };
 
     struct ChassisBody {
-        Vec2  position{0.0f, 0.0f};
+        Vec2  position{0.0f, 0.0f}; // Center of Mass (CoM) position in world space
         Vec2  velocity{0.0f, 0.0f};
         float angle{0.0f};           // Radians
         float angularVelocity{0.0f}; // rad/s
     };
+
+    // Mount points relative to visual chassis center
+    Vec2 visualRearMount() const { return Vec2(-30.0f, 8.0f); }
+    Vec2 visualFrontMount() const { return Vec2(30.0f, 8.0f); }
+    Vec2 visualHeadMount() const { return Vec2(-4.0f, -14.0f); }
+
+    // Mount points relative to Center of Mass (CoM)
+    Vec2 rearMountCoM() const { return visualRearMount() - m_config.centerOfMassOffset; }
+    Vec2 frontMountCoM() const { return visualFrontMount() - m_config.centerOfMassOffset; }
+    Vec2 headMountCoM() const { return visualHeadMount() - m_config.centerOfMassOffset; }
 
     void subStep(float subDt);
     void solveSuspension(WheelBody& wheel, const Vec2& mountLocal, float subDt);
@@ -93,10 +110,6 @@ private:
     ChassisBody m_chassis;
     WheelBody   m_rearWheel;
     WheelBody   m_frontWheel;
-
-    Vec2  m_rearMountLocal{-30.0f, 8.0f};
-    Vec2  m_frontMountLocal{30.0f, 8.0f};
-    Vec2  m_headMountLocal{-4.0f, -14.0f};
 
     float m_throttle{0.0f};
     bool  m_headCollided{false};

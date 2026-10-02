@@ -20,21 +20,26 @@ float SineTerrainGenerator::sampleHeight(float x) const {
 
     float relX = x - m_config.startFlatLength;
 
-    // Smooth blend-in transition from flat to hills over 150px
+    // Smoothstep blend-in transition from flat runway to hills over 150px
     float blend = std::min(1.0f, relX / 150.0f);
-    blend = blend * blend * (3.0f - 2.0f * blend); // Smoothstep
+    blend = blend * blend * (3.0f - 2.0f * blend);
 
-    // Gradual difficulty scaling
+    // Gradual difficulty scaling over course distance
     float bonus = std::min(m_config.maxAmplitudeBonus, relX * m_config.growthFactor);
-    float scale = 1.0f + bonus / 50.0f;
+    float scale = 1.0f + bonus / 45.0f;
 
-    // Multi-octave harmonic synthesis
+    // Multi-octave harmonic terrain synthesis
+    // Octave 1: Grand rolling peaks & valleys
     float wave1 = std::sin(relX * m_config.freq1) * (m_config.amp1 * scale);
+    // Octave 2: Steep launch crests
     float wave2 = std::sin(relX * m_config.freq2 + 1.2f) * (m_config.amp2 * scale);
-    float wave3 = std::cos(relX * m_config.freq3 + 2.5f) * m_config.amp3;
+    // Octave 3: Dynamic moguls
+    float wave3 = std::cos(relX * m_config.freq3 + 2.5f) * (m_config.amp3 * (1.0f + bonus / 80.0f));
+    // Octave 4: Surface whoops & texture
+    float wave4 = std::sin(relX * m_config.freq4 + 0.8f) * m_config.amp4;
 
-    // Invert because screen Y points downwards (subtracting wave makes hills go up!)
-    float height = m_config.baseY - (wave1 + wave2 + wave3) * blend;
+    // Invert because screen Y points downwards (subtracting wave makes hills rise)
+    float height = m_config.baseY - (wave1 + wave2 + wave3 + wave4) * blend;
     return height;
 }
 
