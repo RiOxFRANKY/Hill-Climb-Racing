@@ -9,8 +9,22 @@
 /Makefile
 /.qtc_clangd/
 /.qtcreator/
-/*.user
-/*.user.*
+*.pro.user
+*.pro.user.*
+
+# Compiled binaries / object files
+*.exe
+*.dll
+*.o
+*.obj
+*.a
+*.lib
+
+# Generated Qt files
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
 
 # Generated screenshots and previews
 /preview*.png
