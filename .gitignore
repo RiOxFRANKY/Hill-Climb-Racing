@@ -1,0 +1,22 @@
+# Qt/CMake generated files
+/build/
+/build-*/
+/cmake-build-*/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/compile_commands.json
+/Makefile
+/.qtc_clangd/
+/*.user
+/*.user.*
+
+# Generated screenshots and previews
+/preview*.png
+
+# Platform/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
