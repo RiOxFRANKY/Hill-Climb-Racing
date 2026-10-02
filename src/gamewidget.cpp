@@ -59,6 +59,14 @@ constexpr double BrakeTorque = 32000.0;
 constexpr double RollingResistance = 0.35;
 constexpr double AirControl = 3.6;
 constexpr double MaxChassisSpin = 7.0;
+// Resolving an overlap in one substep would otherwise turn the correction into
+// a huge velocity; push-out is bled off gently instead.
+constexpr double MaxPushOutSpeed = 150.0;
+
+// A car resting on its roof (or stalled on its side) for this long is wrecked.
+constexpr double FlippedAngle = 1.75;
+constexpr double OnSideAngle = 1.2;
+constexpr double FlipGraceTime = 0.4;
 
 constexpr double TyreStaticFriction = 1.25;
 constexpr double TyreDynamicFriction = 1.0;
@@ -287,6 +295,9 @@ void GameWidget::resetGame()
     }
     m_wheelContacts = 0;
     m_headHit = false;
+    m_bodyContact = false;
+    m_flipTimer = 0.0;
+    m_gameOverReason.clear();
     m_cameraX = 0.0;
     m_cameraY = 0.0;
     m_fuel = 100.0;
@@ -538,6 +549,7 @@ void GameWidget::updatePhysics(double dt)
     const double throttle = (accelerate ? 1.0 : 0.0) - (reverse ? 1.0 : 0.0);
 
     m_headHit = false;
+    m_bodyContact = false;
     const double h = dt / PhysicsSubsteps;
     for (int i = 0; i < PhysicsSubsteps; ++i)
         stepPhysics(h, throttle, boost);
@@ -556,11 +568,28 @@ void GameWidget::updatePhysics(double dt)
         }
     }
 
+    // Tilt relative to the ground underneath, so steep hills do not count.
+    const double groundAngle = std::atan(surfaceSlope(m_chassis.position.x()));
+    const double tilt = std::abs(std::remainder(m_chassis.angle - groundAngle, 2.0 * Pi));
+    const bool upsideDown = tilt > FlippedAngle && m_bodyContact;
+    const bool stalledOnSide =
+        tilt > OnSideAngle && m_bodyContact && length(m_chassis.velocity) < 60.0;
+    m_flipTimer = upsideDown || stalledOnSide ? m_flipTimer + dt : 0.0;
+
     const bool fuelFinished = m_fuel <= 0.0 && m_wheelContacts > 0
                               && std::abs(m_chassis.velocity.x()) < 16.0;
     const bool fellIntoGap =
         m_chassis.position.y() < surfaceHeight(m_chassis.position.x()) - 220.0;
-    if (fuelFinished || fellIntoGap || m_headHit) {
+    if (m_headHit)
+        m_gameOverReason = QStringLiteral("HEAD CRASH");
+    else if (m_flipTimer > FlipGraceTime)
+        m_gameOverReason = QStringLiteral("FLIPPED OVER");
+    else if (fellIntoGap)
+        m_gameOverReason = QStringLiteral("FELL IN");
+    else if (fuelFinished)
+        m_gameOverReason = QStringLiteral("OUT OF FUEL");
+
+    if (!m_gameOverReason.isEmpty()) {
         m_gameOver = true;
         m_keys.clear();
     }
@@ -669,8 +698,13 @@ void GameWidget::stepPhysics(double h, double throttle, bool boost)
             return false;
 
         const QPointF arm = center - body.position - normal * radius;
+        // Undo this substep's motion into the ground fully, but let any older
+        // overlap separate no faster than MaxPushOutSpeed so it cannot launch.
+        const double normalSpeed = QPointF::dotProduct(pointVelocity(body, arm), normal);
+        const double correction =
+            std::min(depth, std::max(0.0, (MaxPushOutSpeed - normalSpeed) * h));
         const double normalLambda =
-            applyCorrection(body, nullptr, arm, QPointF(), normal * depth, 0.0, h);
+            applyCorrection(body, nullptr, arm, QPointF(), normal * correction, 0.0, h);
 
         // Cancel sliding of the touching material point while the normal force
         // can hold it; this is what lets a spinning tyre push the car along.
@@ -702,9 +736,10 @@ void GameWidget::stepPhysics(double h, double throttle, bool boost)
     for (const BodyCollider &collider : ChassisColliders) {
         const QPointF center =
             m_chassis.position + rotatePoint(QPointF(collider.x, collider.y), m_chassis.angle);
-        if (collide(m_chassis, center, collider.radius, BodyStaticFriction, BodyDynamicFriction)
-            && collider.head) {
-            m_headHit = true;
+        if (collide(m_chassis, center, collider.radius, BodyStaticFriction, BodyDynamicFriction)) {
+            m_bodyContact = true;
+            if (collider.head)
+                m_headHit = true;
         }
     }
 
@@ -1422,7 +1457,7 @@ void GameWidget::drawOverlay(QPainter &painter) const
     painter.setPen(Qt::white);
     painter.setFont(QFont(QStringLiteral("Segoe UI"), 54, QFont::Black));
     painter.drawText(QRectF(650.0, 365.0, 620.0, 90.0), Qt::AlignCenter,
-                     m_gameOver ? QStringLiteral("RUN OVER") : QStringLiteral("PAUSED"));
+                     m_gameOver ? m_gameOverReason : QStringLiteral("PAUSED"));
 
     const int distance = static_cast<int>(std::max(0.0, m_chassis.position.x() - 360.0) / 10.0);
     painter.setPen(QColor(200, 222, 232));

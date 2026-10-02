@@ -118,6 +118,9 @@ private:
     std::array<RigidBody, 2> m_wheels;
     int m_wheelContacts = 0;
     bool m_headHit = false;
+    bool m_bodyContact = false;
+    double m_flipTimer = 0.0;
+    QString m_gameOverReason;
     double m_cameraX = 0.0;
     double m_cameraY = 0.0;
     double m_fuel = 100.0;
