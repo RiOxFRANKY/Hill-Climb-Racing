@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/assets">
+        <file alias="car_body.png">assets/car_body.png</file>
+        <file alias="wheel.png">assets/wheel.png</file>
+        <file alias="background.png">assets/background.png</file>
+    </qresource>
+</RCC>

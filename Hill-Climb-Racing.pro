@@ -13,6 +13,8 @@ SOURCES += \
 HEADERS += \
     src/gamewidget.h
 
+RESOURCES += resources.qrc
+
 INCLUDEPATH += src
 
 win32-g++ {

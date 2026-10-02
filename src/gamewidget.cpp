@@ -2,20 +2,29 @@
 
 #include <QApplication>
 #include <QFocusEvent>
+#include <QImage>
 #include <QKeyEvent>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRadialGradient>
+#include <QRandomGenerator>
 
 #include <algorithm>
 #include <cmath>
 
 namespace {
 constexpr double Pi = 3.14159265358979323846;
-constexpr double WheelRadius = 43.0;
-constexpr double WheelOffset = 80.0;
-constexpr double WheelLocalY = -39.0;
+constexpr double WheelRadius = 40.0;
+constexpr double BodyWheelReferenceRadius = 185.0;
+constexpr double CarSpriteScale = WheelRadius / BodyWheelReferenceRadius;
+constexpr double WheelSpriteTargetRadius = 46.3;
+constexpr double RearWheelSourceX = 419.0;
+constexpr double FrontWheelSourceX = 1356.0;
+constexpr double WheelSourceY = 730.0;
+constexpr double WheelOffset = (FrontWheelSourceX - RearWheelSourceX) * 0.5 * CarSpriteScale;
+constexpr double WheelLocalY = -43.0;
+constexpr double CarSourceCenterX = (RearWheelSourceX + FrontWheelSourceX) * 0.5;
 
 double clampValue(double value, double minimum, double maximum)
 {
@@ -40,6 +49,22 @@ GameWidget::GameWidget(QWidget *parent)
     setAttribute(Qt::WA_OpaquePaintEvent);
     setCursor(Qt::BlankCursor);
 
+    m_carBody.load(QStringLiteral(":/assets/car_body.png"));
+    m_wheelSprite.load(QStringLiteral(":/assets/wheel.png"));
+
+    // The backdrop is not seamless, so it alternates with a mirrored copy; the
+    // touching edges then always match while the strip scrolls.
+    const QImage background(QStringLiteral(":/assets/background.png"));
+    if (!background.isNull()) {
+        const QImage scaled = background.scaled(DesignWidth, DesignHeight,
+                                                Qt::IgnoreAspectRatio,
+                                                Qt::SmoothTransformation);
+        m_backgroundStrip = QPixmap(DesignWidth * 2, DesignHeight);
+        QPainter stripPainter(&m_backgroundStrip);
+        stripPainter.drawImage(0, 0, scaled);
+        stripPainter.drawImage(DesignWidth, 0, scaled.flipped(Qt::Horizontal));
+    }
+
     connect(&m_timer, &QTimer::timeout, this, &GameWidget::tick);
     m_timer.setTimerType(Qt::PreciseTimer);
     m_timer.start(16);
@@ -52,6 +77,7 @@ void GameWidget::resetGame()
 {
     m_keys.clear();
     m_pickups.clear();
+    resetTerrain();
     m_position = QPointF(360.0, terrainHeight(360.0) + 118.0);
     m_velocity = QPointF(0.0, 0.0);
     m_angle = std::atan(terrainSlope(m_position.x()));
@@ -77,6 +103,8 @@ void GameWidget::tick()
     const double frameTime = clampValue(elapsedMs / 1000.0, 0.0, 0.034);
 
     if (!m_paused && !m_gameOver) {
+        ensureTerrainAhead(std::max(m_position.x(), m_cameraX + DesignWidth) + 1400.0);
+
         constexpr int substeps = 3;
         for (int i = 0; i < substeps; ++i)
             updatePhysics(frameTime / substeps);
@@ -94,6 +122,65 @@ void GameWidget::tick()
     }
 
     update();
+}
+
+void GameWidget::resetTerrain()
+{
+    m_randomEngine.seed(QRandomGenerator::global()->generate());
+    m_terrainDirection = 0.06;
+
+    // A predictable, nearly flat launch area gives the car time to settle before
+    // the randomly generated hills begin.
+    m_terrainPoints = {
+        QPointF(-900.0, 228.0),
+        QPointF(-400.0, 228.0),
+        QPointF(0.0, 228.0),
+        QPointF(360.0, 230.0),
+        QPointF(620.0, 240.0)
+    };
+
+    ensureTerrainAhead(DesignWidth + 1400.0);
+}
+
+void GameWidget::ensureTerrainAhead(double worldX)
+{
+    if (m_terrainPoints.isEmpty())
+        m_terrainPoints.push_back(QPointF(-900.0, 228.0));
+
+    std::uniform_real_distribution<double> segmentLength(155.0, 245.0);
+    std::uniform_real_distribution<double> jitter(-0.065, 0.065);
+    std::uniform_real_distribution<double> turnAmount(-0.16, 0.16);
+    std::uniform_real_distribution<double> boundaryPush(0.07, 0.14);
+    std::bernoulli_distribution changeTrend(0.24);
+
+    while (m_terrainPoints.constLast().x() < worldX) {
+        const QPointF previous = m_terrainPoints.constLast();
+        const double length = segmentLength(m_randomEngine);
+
+        // This is a constrained random walk rather than unrelated random values.
+        // Direction has momentum, which produces recognizable climbs and descents.
+        m_terrainDirection += jitter(m_randomEngine);
+        if (changeTrend(m_randomEngine))
+            m_terrainDirection += turnAmount(m_randomEngine);
+
+        // Gently steer the generator back toward the playable height band.
+        if (previous.y() > 390.0)
+            m_terrainDirection -= boundaryPush(m_randomEngine);
+        else if (previous.y() < 165.0)
+            m_terrainDirection += boundaryPush(m_randomEngine);
+
+        m_terrainDirection = clampValue(m_terrainDirection, -0.30, 0.30);
+        if (std::abs(m_terrainDirection) < 0.035)
+            m_terrainDirection = m_terrainDirection < 0.0 ? -0.035 : 0.035;
+
+        double nextHeight = previous.y() + m_terrainDirection * length;
+        const double constrainedHeight = clampValue(nextHeight, 135.0, 430.0);
+        if (constrainedHeight != nextHeight)
+            m_terrainDirection *= -0.55;
+        nextHeight = constrainedHeight;
+
+        m_terrainPoints.push_back(QPointF(previous.x() + length, nextHeight));
+    }
 }
 
 void GameWidget::updatePhysics(double dt)
@@ -180,9 +267,11 @@ void GameWidget::updatePhysics(double dt)
         m_position.y() + rotatePoint(QPointF(0.0, 45.0), m_angle).y()
         < terrainHeight(m_position.x()) + 12.0;
 
-    if ((m_fuel <= 0.0 && std::abs(m_velocity.x()) < 16.0 && m_grounded)
-        || (upsideDown && roofTouching)
-        || m_position.y() < -250.0) {
+    const bool fuelFinished =
+        m_fuel <= 0.0 && std::abs(m_velocity.x()) < 16.0 && m_grounded;
+    const bool crashDetected =
+        (upsideDown && roofTouching) || m_position.y() < -250.0;
+    if (fuelFinished || crashDetected) {
         m_gameOver = true;
         m_keys.clear();
     }
@@ -250,26 +339,58 @@ void GameWidget::ensurePickupsAhead()
     }
 }
 
+int GameWidget::terrainSegmentFor(double x) const
+{
+    if (m_terrainPoints.size() < 2)
+        return 0;
+
+    int low = 0;
+    int high = static_cast<int>(m_terrainPoints.size()) - 1;
+    while (low + 1 < high) {
+        const int middle = low + (high - low) / 2;
+        if (m_terrainPoints.at(middle).x() <= x)
+            low = middle;
+        else
+            high = middle;
+    }
+
+    return std::clamp(low, 0, static_cast<int>(m_terrainPoints.size()) - 2);
+}
+
 double GameWidget::terrainHeight(double x) const
 {
-    // Several low-frequency waves give predictable but varied driveable hills.
-    double height = 225.0
-        + 80.0 * std::sin(x * 0.00155)
-        + 38.0 * std::sin(x * 0.0041 + 1.1)
-        + 16.0 * std::sin(x * 0.0105 + 0.4);
+    if (m_terrainPoints.isEmpty())
+        return 228.0;
+    if (m_terrainPoints.size() == 1 || x <= m_terrainPoints.constFirst().x())
+        return m_terrainPoints.constFirst().y();
+    if (x >= m_terrainPoints.constLast().x())
+        return m_terrainPoints.constLast().y();
 
-    // Keep the spawn zone gentle while blending into the endless terrain.
-    const double spawnBlend = clampValue((x - 260.0) / 700.0, 0.0, 1.0);
-    const double spawnHeight = 230.0 + (x - 360.0) * 0.035;
-    height = spawnHeight * (1.0 - spawnBlend) + height * spawnBlend;
+    const int index = terrainSegmentFor(x);
+    const QPointF &start = m_terrainPoints.at(index);
+    const QPointF &end = m_terrainPoints.at(index + 1);
+    const double t = clampValue((x - start.x()) / (end.x() - start.x()), 0.0, 1.0);
+    const double smoothT = t * t * (3.0 - 2.0 * t);
 
-    return height;
+    return start.y() + (end.y() - start.y()) * smoothT;
 }
 
 double GameWidget::terrainSlope(double x) const
 {
-    constexpr double sample = 2.0;
-    return (terrainHeight(x + sample) - terrainHeight(x - sample)) / (2.0 * sample);
+    if (m_terrainPoints.size() < 2
+        || x <= m_terrainPoints.constFirst().x()
+        || x >= m_terrainPoints.constLast().x()) {
+        return 0.0;
+    }
+
+    const int index = terrainSegmentFor(x);
+    const QPointF &start = m_terrainPoints.at(index);
+    const QPointF &end = m_terrainPoints.at(index + 1);
+    const double length = end.x() - start.x();
+    const double t = clampValue((x - start.x()) / length, 0.0, 1.0);
+    const double smoothDerivative = 6.0 * t * (1.0 - t);
+
+    return (end.y() - start.y()) / length * smoothDerivative;
 }
 
 QPointF GameWidget::wheelPosition(double localX) const
@@ -299,70 +420,20 @@ void GameWidget::paintEvent(QPaintEvent *)
 
 void GameWidget::drawBackground(QPainter &painter) const
 {
-    QLinearGradient sky(0.0, 0.0, 0.0, DesignHeight);
-    sky.setColorAt(0.0, QColor(37, 119, 190));
-    sky.setColorAt(0.54, QColor(104, 191, 226));
-    sky.setColorAt(1.0, QColor(214, 238, 215));
-    painter.fillRect(rect(), sky);
-
-    QRadialGradient sun(QPointF(1580.0, 165.0), 135.0);
-    sun.setColorAt(0.0, QColor(255, 250, 188, 245));
-    sun.setColorAt(0.52, QColor(255, 232, 128, 185));
-    sun.setColorAt(1.0, QColor(255, 230, 120, 0));
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(sun);
-    painter.drawEllipse(QPointF(1580.0, 165.0), 135.0, 135.0);
-    painter.setBrush(QColor(255, 241, 147));
-    painter.drawEllipse(QPointF(1580.0, 165.0), 57.0, 57.0);
-
-    const double farShift = std::fmod(m_cameraX * 0.08, 900.0);
-    QPainterPath farMountains;
-    farMountains.moveTo(-950.0 - farShift, 760.0);
-    for (int i = -1; i < 5; ++i) {
-        const double x = i * 720.0 - farShift;
-        farMountains.lineTo(x + 170.0, 565.0 + (i % 2) * 45.0);
-        farMountains.lineTo(x + 360.0, 345.0 + (i % 3) * 42.0);
-        farMountains.lineTo(x + 570.0, 600.0 - (i % 2) * 35.0);
-        farMountains.lineTo(x + 720.0, 520.0);
+    if (m_backgroundStrip.isNull()) {
+        QLinearGradient sky(0.0, 0.0, 0.0, DesignHeight);
+        sky.setColorAt(0.0, QColor(37, 119, 190));
+        sky.setColorAt(0.54, QColor(104, 191, 226));
+        sky.setColorAt(1.0, QColor(214, 238, 215));
+        painter.fillRect(rect(), sky);
+        return;
     }
-    farMountains.lineTo(DesignWidth + 50.0, DesignHeight);
-    farMountains.lineTo(-950.0, DesignHeight);
-    farMountains.closeSubpath();
-    painter.setBrush(QColor(75, 139, 157, 110));
-    painter.drawPath(farMountains);
 
-    const double nearShift = std::fmod(m_cameraX * 0.18, 760.0);
-    QPainterPath nearMountains;
-    nearMountains.moveTo(-800.0 - nearShift, 800.0);
-    for (int i = -1; i < 5; ++i) {
-        const double x = i * 650.0 - nearShift;
-        nearMountains.lineTo(x + 120.0, 640.0);
-        nearMountains.lineTo(x + 310.0, 465.0 + (i % 2) * 55.0);
-        nearMountains.lineTo(x + 520.0, 650.0);
-        nearMountains.lineTo(x + 650.0, 570.0);
-    }
-    nearMountains.lineTo(DesignWidth + 50.0, DesignHeight);
-    nearMountains.lineTo(-800.0, DesignHeight);
-    nearMountains.closeSubpath();
-    painter.setBrush(QColor(54, 123, 126, 125));
-    painter.drawPath(nearMountains);
-
-    drawCloud(painter, QPointF(320.0 - std::fmod(m_cameraX * 0.04, 2200.0), 175.0), 1.0);
-    drawCloud(painter, QPointF(1040.0 - std::fmod(m_cameraX * 0.025, 2450.0), 285.0), 0.7);
-    drawCloud(painter, QPointF(1930.0 - std::fmod(m_cameraX * 0.055, 2700.0), 120.0), 0.82);
-}
-
-void GameWidget::drawCloud(QPainter &painter, QPointF position, double scale) const
-{
-    painter.save();
-    painter.translate(position);
-    painter.scale(scale, scale);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(255, 255, 255, 190));
-    painter.drawEllipse(QRectF(0.0, 26.0, 150.0, 58.0));
-    painter.drawEllipse(QRectF(24.0, 1.0, 75.0, 70.0));
-    painter.drawEllipse(QRectF(74.0, 15.0, 82.0, 62.0));
-    painter.restore();
+    const double stripWidth = m_backgroundStrip.width();
+    const double shift = std::fmod(m_cameraX * 0.06, stripWidth);
+    painter.drawPixmap(QPointF(-shift, 0.0), m_backgroundStrip);
+    if (stripWidth - shift < DesignWidth)
+        painter.drawPixmap(QPointF(stripWidth - shift, 0.0), m_backgroundStrip);
 }
 
 void GameWidget::drawTerrain(QPainter &painter) const
@@ -447,93 +518,45 @@ void GameWidget::drawPickups(QPainter &painter) const
     }
 }
 
-void GameWidget::drawWheel(QPainter &painter, const QPointF &center, double angle) const
-{
-    painter.save();
-    painter.translate(center);
-    painter.rotate(-angle * 180.0 / Pi);
-    painter.setPen(QPen(QColor(20, 24, 28), 7.0));
-    painter.setBrush(QColor(34, 38, 42));
-    painter.drawEllipse(QPointF(0.0, 0.0), WheelRadius, WheelRadius);
-    painter.setPen(QPen(QColor(75, 80, 83), 4.0));
-    painter.setBrush(QColor(143, 151, 153));
-    painter.drawEllipse(QPointF(0.0, 0.0), 22.0, 22.0);
-    painter.setPen(QPen(QColor(71, 76, 78), 5.0, Qt::SolidLine, Qt::RoundCap));
-    for (int i = 0; i < 6; ++i) {
-        painter.drawLine(QPointF(0.0, -17.0), QPointF(0.0, -33.0));
-        painter.rotate(60.0);
-    }
-    painter.setBrush(QColor(234, 180, 43));
-    painter.setPen(Qt::NoPen);
-    painter.drawEllipse(QPointF(0.0, 0.0), 7.0, 7.0);
-    painter.restore();
-}
-
 void GameWidget::drawCar(QPainter &painter) const
 {
-    const QPointF rearWheel = worldToScreen(wheelPosition(-WheelOffset));
-    const QPointF frontWheel = worldToScreen(wheelPosition(WheelOffset));
-    const double wheelSpin = m_position.x() / WheelRadius;
-
-    painter.setPen(QPen(QColor(43, 47, 49), 13.0, Qt::SolidLine, Qt::RoundCap));
-    painter.drawLine(rearWheel, frontWheel);
-    drawWheel(painter, rearWheel, wheelSpin);
-    drawWheel(painter, frontWheel, wheelSpin);
-
     const QPointF bodyCenter = worldToScreen(m_position);
     painter.save();
     painter.translate(bodyCenter);
     painter.rotate(-m_angle * 180.0 / Pi);
 
-    // Suspension arms stay visually attached to the wheel hubs.
-    painter.setPen(QPen(QColor(232, 179, 42), 8.0, Qt::SolidLine, Qt::RoundCap));
-    painter.drawLine(QPointF(-55.0, 4.0), QPointF(-WheelOffset, 39.0));
-    painter.drawLine(QPointF(55.0, 4.0), QPointF(WheelOffset, 39.0));
+    if (!m_carBody.isNull() && !m_wheelSprite.isNull()) {
+        const double wheelSpinDegrees =
+            std::remainder(m_position.x() / WheelRadius * 180.0 / Pi, 360.0);
 
-    QPainterPath body;
-    body.moveTo(-112.0, 18.0);
-    body.lineTo(-90.0, -31.0);
-    body.quadTo(-63.0, -51.0, -24.0, -52.0);
-    body.lineTo(28.0, -51.0);
-    body.lineTo(75.0, -27.0);
-    body.lineTo(113.0, -12.0);
-    body.lineTo(104.0, 25.0);
-    body.lineTo(64.0, 36.0);
-    body.lineTo(-73.0, 36.0);
-    body.closeSubpath();
+        const auto drawAnimatedTyre = [&](double localX) {
+            painter.save();
+            painter.translate(localX, -WheelLocalY);
+            painter.rotate(wheelSpinDegrees);
+            painter.drawPixmap(
+                QRectF(-WheelSpriteTargetRadius, -WheelSpriteTargetRadius,
+                       WheelSpriteTargetRadius * 2.0,
+                       WheelSpriteTargetRadius * 2.0),
+                m_wheelSprite,
+                QRectF(m_wheelSprite.rect()));
+            painter.restore();
+        };
 
-    QLinearGradient redPaint(0.0, -55.0, 0.0, 38.0);
-    redPaint.setColorAt(0.0, QColor(249, 92, 66));
-    redPaint.setColorAt(0.55, QColor(219, 51, 42));
-    redPaint.setColorAt(1.0, QColor(137, 31, 29));
-    painter.setPen(QPen(QColor(90, 27, 27), 6.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.setBrush(redPaint);
-    painter.drawPath(body);
+        // Tyres are rendered first, then the wheel-free body covers the portions
+        // that belong behind the fenders and suspension.
+        drawAnimatedTyre(-WheelOffset);
+        drawAnimatedTyre(WheelOffset);
 
-    QPainterPath cabin;
-    cabin.moveTo(-39.0, -52.0);
-    cabin.lineTo(-19.0, -91.0);
-    cabin.quadTo(-7.0, -105.0, 13.0, -104.0);
-    cabin.lineTo(51.0, -54.0);
-    cabin.closeSubpath();
-    painter.setBrush(QColor(44, 76, 94));
-    painter.setPen(QPen(QColor(30, 42, 48), 6.0));
-    painter.drawPath(cabin);
-    painter.setPen(QPen(QColor(131, 208, 227), 3.0));
-    painter.drawLine(QPointF(-10.0, -91.0), QPointF(-26.0, -58.0));
+        const double spriteLeft = -CarSourceCenterX * CarSpriteScale;
+        const double spriteTop = -WheelLocalY - WheelSourceY * CarSpriteScale;
+        painter.drawPixmap(
+            QRectF(spriteLeft, spriteTop,
+                   m_carBody.width() * CarSpriteScale,
+                   m_carBody.height() * CarSpriteScale),
+            m_carBody,
+            QRectF(m_carBody.rect()));
+    }
 
-    // Driver head and cap.
-    painter.setPen(QPen(QColor(92, 51, 37), 3.0));
-    painter.setBrush(QColor(236, 172, 116));
-    painter.drawEllipse(QPointF(2.0, -99.0), 16.0, 18.0);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(246, 202, 49));
-    painter.drawPie(QRectF(-16.0, -121.0, 38.0, 30.0), 0, 180 * 16);
-    painter.drawRoundedRect(QRectF(-20.0, -104.0, 29.0, 7.0), 3.0, 3.0);
-
-    painter.setPen(QPen(QColor(255, 216, 92), 3.0));
-    painter.setBrush(QColor(255, 236, 142));
-    painter.drawEllipse(QPointF(91.0, -9.0), 14.0, 11.0);
     painter.restore();
 }
 

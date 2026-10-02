@@ -2,10 +2,13 @@
 
 #include <QElapsedTimer>
 #include <QPointF>
+#include <QPixmap>
 #include <QSet>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
+
+#include <random>
 
 class QKeyEvent;
 class QPaintEvent;
@@ -40,10 +43,13 @@ private:
     static constexpr int DesignHeight = 1080;
 
     void resetGame();
+    void resetTerrain();
+    void ensureTerrainAhead(double worldX);
     void updatePhysics(double dt);
     void updatePickups();
     void ensurePickupsAhead();
 
+    [[nodiscard]] int terrainSegmentFor(double x) const;
     [[nodiscard]] double terrainHeight(double x) const;
     [[nodiscard]] double terrainSlope(double x) const;
     [[nodiscard]] QPointF wheelPosition(double localX) const;
@@ -55,8 +61,6 @@ private:
     void drawCar(QPainter &painter) const;
     void drawHud(QPainter &painter) const;
     void drawOverlay(QPainter &painter) const;
-    void drawCloud(QPainter &painter, QPointF position, double scale) const;
-    void drawWheel(QPainter &painter, const QPointF &center, double angle) const;
     void drawKeyHint(QPainter &painter, const QRectF &rect,
                      const QString &key, const QString &label, bool active) const;
 
@@ -64,6 +68,11 @@ private:
     QElapsedTimer m_clock;
     QSet<int> m_keys;
     QVector<Pickup> m_pickups;
+    QVector<QPointF> m_terrainPoints;
+    QPixmap m_carBody;
+    QPixmap m_wheelSprite;
+    QPixmap m_backgroundStrip;
+    std::mt19937 m_randomEngine;
 
     QPointF m_position;
     QPointF m_velocity;
@@ -74,10 +83,10 @@ private:
     double m_fuel = 100.0;
     double m_survivalTime = 0.0;
     double m_nextPickupX = 780.0;
+    double m_terrainDirection = 0.0;
     int m_score = 0;
     int m_coins = 0;
     bool m_grounded = false;
     bool m_paused = false;
     bool m_gameOver = false;
 };
-

@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
@@ -13,6 +14,7 @@ qt_add_executable(HillClimbQt WIN32
     src/main.cpp
     src/gamewidget.cpp
     src/gamewidget.h
+    resources.qrc
 )
 
 target_link_libraries(HillClimbQt PRIVATE Qt6::Widgets)
@@ -26,4 +28,3 @@ endif()
 install(TARGETS HillClimbQt
     RUNTIME DESTINATION .
 )
-
