@@ -8,6 +8,7 @@
 /compile_commands.json
 /Makefile
 /.qtc_clangd/
+/.qtcreator/
 /*.user
 /*.user.*
 
@@ -19,4 +20,3 @@
 Thumbs.db
 .vscode/
 .idea/
-

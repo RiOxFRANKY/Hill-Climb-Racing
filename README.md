@@ -17,6 +17,22 @@ Collect coins for points and red fuel cans to refill the tank.
 
 ## Build on this machine
 
+### Qt Creator / qmake
+
+Open `Hill-Climb-Racing.pro` in Qt Creator, select the installed Qt 6 Desktop
+kit, and press **Run**.
+
+From PowerShell, the equivalent qmake commands are:
+
+```powershell
+New-Item -ItemType Directory -Force build-qmake | Out-Null
+Set-Location build-qmake
+& "C:\Qt\6.11.1\mingw_64\bin\qmake.exe" ..\Hill-Climb-Racing.pro
+& "C:\Qt\Tools\mingw1310_64\bin\mingw32-make.exe"
+```
+
+### CMake
+
 From PowerShell in the project directory:
 
 ```powershell
