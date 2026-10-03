@@ -3,5 +3,6 @@
         <file alias="car_body.png">assets/car_body.png</file>
         <file alias="wheel.png">assets/wheel.png</file>
         <file alias="background.png">assets/background.png</file>
+        <file alias="terrain_10km.json">assets/terrain_10km.json</file>
     </qresource>
 </RCC>

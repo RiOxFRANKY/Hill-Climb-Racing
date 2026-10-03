@@ -1,14 +1,17 @@
 #include "gamewidget.h"
 
 #include <QApplication>
+#include <QFile>
 #include <QFocusEvent>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRadialGradient>
-#include <QRandomGenerator>
 #include <QVarLengthArray>
 
 #include <QPolygonF>
@@ -17,6 +20,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <random>
 
 namespace {
 constexpr double Pi = 3.14159265358979323846;
@@ -31,15 +35,20 @@ constexpr double WheelOffset = (FrontWheelSourceX - RearWheelSourceX) * 0.5 * Ca
 constexpr double WheelLocalY = -43.0;
 constexpr double CarSourceCenterX = (RearWheelSourceX + FrontWheelSourceX) * 0.5;
 
-// Vehicle physics. Lengths are world pixels (roughly 90 px per metre), time is
-// seconds and masses are relative to the chassis.
-constexpr double Gravity = 1100.0;
+// Vehicle physics. Lengths are world pixels at the course scale of 80 px per
+// metre (the car is 4.5 m long on 0.5 m wheels), time is seconds and masses are
+// relative to the chassis. Gravity is real Earth gravity at that scale.
+constexpr double PixelsPerMetre = 80.0;
+constexpr double Gravity = 9.81 * PixelsPerMetre;
 constexpr int PhysicsSubsteps = 16;
 constexpr double ChassisMass = 1.0;
 constexpr double ChassisInertia = ChassisMass * 70.0 * 70.0;
 constexpr double WheelMass = 0.15;
 constexpr double WheelInertia = 0.5 * WheelMass * WheelRadius * WheelRadius;
-
+// The chassis' centre of mass sits this far below the centre of the artwork
+// (engine and frame are low). It keeps the car from tipping backwards on
+// slopes up to ~60 degrees. All body-local coordinates are artwork-relative.
+constexpr double CenterOfMassY = -28.0;
 // Suspension travel is measured along the chassis "down" axis from the wheel's
 // position in the artwork. The spring rest point sits below it by the static
 // sag, so a car at rest settles with its wheels exactly where they are drawn.
@@ -49,10 +58,10 @@ constexpr double SuspensionDamping = 4.5;
 constexpr double SuspensionMinExtension = -14.0;
 constexpr double SuspensionMaxExtension = 20.0;
 
-constexpr double DriveTorque = 20000.0;
-constexpr double BoostDriveTorque = 27000.0;
-constexpr double MaxWheelSpin = 22.0;
-constexpr double BoostWheelSpin = 28.0;
+constexpr double DriveTorque = 26000.0;
+constexpr double BoostDriveTorque = 34000.0;
+constexpr double MaxWheelSpin = 30.0;   // 15 m/s
+constexpr double BoostWheelSpin = 36.0; // 18 m/s
 constexpr double ReverseTorque = 12000.0;
 constexpr double MaxReverseSpin = 9.0;
 constexpr double BrakeTorque = 32000.0;
@@ -68,8 +77,9 @@ constexpr double FlippedAngle = 1.75;
 constexpr double OnSideAngle = 1.2;
 constexpr double FlipGraceTime = 0.4;
 
-constexpr double TyreStaticFriction = 1.25;
-constexpr double TyreDynamicFriction = 1.0;
+// Grippy off-road tyres: the course has climbs close to 60 degrees.
+constexpr double TyreStaticFriction = 1.8;
+constexpr double TyreDynamicFriction = 1.5;
 constexpr double BodyStaticFriction = 0.6;
 constexpr double BodyDynamicFriction = 0.45;
 
@@ -83,8 +93,10 @@ struct BodyCollider {
 
 constexpr std::array<BodyCollider, 8> ChassisColliders{{
     {-170.0, -5.0, 16.0, false},  // spare tyre
-    {-138.0, -30.0, 10.0, false}, // rear bumper
-    {150.0, -12.0, 13.0, false},  // front bumper
+    // Bumper circles sit high and tucked in so the car clears slopes of about
+    // 60 degrees (approach and departure angles), as the course demands.
+    {-135.0, -22.0, 9.0, false},  // rear bumper
+    {138.0, -5.0, 11.0, false},   // front bumper
     {120.0, 26.0, 9.0, false},    // bonnet
     {-5.0, -32.0, 10.0, false},   // floor pan
     {-92.0, 80.0, 9.0, false},    // roll cage
@@ -92,21 +104,13 @@ constexpr std::array<BodyCollider, 8> ChassisColliders{{
     {-38.0, 68.0, 15.0, true},    // driver's head
 }};
 
-constexpr double MinTerrainHeight = 150.0;
-constexpr double MaxTerrainHeight = 820.0;
-constexpr double GapFloor = -2000.0;
-// Between two flat-tangent nodes a Hermite segment peaks at 1.5x its average
-// slope. Capping climbs at 0.48 keeps every uphill below ~0.72, which the engine
-// can still crawl up from a standstill, so no trough becomes a dead end.
-constexpr double MaxClimbSecant = 0.48;
-constexpr double MaxDropSecant = 0.85;
-// Limits how sharply a descent may turn into a climb. A V narrower than the car
-// would wedge its bumper into the far slope, so steep drops get a run-out.
-constexpr double MaxTroughBend = 0.9;
+// Floor of every ravine, far below the lowest point of the course.
+constexpr double GapFloor = -20000.0;
 constexpr double GrassThickness = 24.0;
 constexpr int SoilTileSize = 1024;
 
-enum TerrainFeature { Rolling, Waves, Bumps, Valley, Steps, Gap, FeatureCount };
+// Fuel cans appear at this spacing along the course.
+constexpr double FuelSpacing = 250.0 * PixelsPerMetre;
 
 double clampValue(double value, double minimum, double maximum)
 {
@@ -174,6 +178,13 @@ void applyImpulse(RigidBody &body, const QPointF &arm, const QPointF &impulse)
 {
     body.velocity += impulse * body.inverseMass;
     body.angularVelocity += body.inverseInertia * cross(arm, impulse);
+}
+
+// Converts a point given relative to the car artwork into the chassis body
+// frame, whose origin is the centre of mass.
+QPointF chassisLocal(double x, double y)
+{
+    return QPointF(x, y - CenterOfMassY);
 }
 
 // Stable per-position randomness for decorations, so they never flicker.
@@ -255,6 +266,7 @@ GameWidget::GameWidget(QWidget *parent)
     m_carBody.load(QStringLiteral(":/assets/car_body.png"));
     m_wheelSprite.load(QStringLiteral(":/assets/wheel.png"));
     buildSoilTexture();
+    loadCourse();
 
     // The backdrop is not seamless, so it alternates with a mirrored copy; the
     // touching edges then always match while the strip scrolls.
@@ -281,15 +293,16 @@ void GameWidget::resetGame()
 {
     m_keys.clear();
     m_pickups.clear();
-    resetTerrain();
     m_chassis = RigidBody{};
-    m_chassis.position = QPointF(360.0, surfaceHeight(360.0) + WheelRadius - WheelLocalY + 4.0);
+    m_chassis.position = QPointF(m_spawnX, surfaceHeight(m_spawnX) + WheelRadius
+                                               - chassisLocal(0.0, WheelLocalY).y() + 4.0);
     m_chassis.inverseMass = 1.0 / ChassisMass;
     m_chassis.inverseInertia = 1.0 / ChassisInertia;
     for (int i = 0; i < 2; ++i) {
         RigidBody &wheel = m_wheels[i];
         wheel = RigidBody{};
-        wheel.position = m_chassis.position + QPointF(i == 0 ? -WheelOffset : WheelOffset, WheelLocalY);
+        wheel.position = m_chassis.position
+                         + chassisLocal(i == 0 ? -WheelOffset : WheelOffset, WheelLocalY);
         wheel.inverseMass = 1.0 / WheelMass;
         wheel.inverseInertia = 1.0 / WheelInertia;
     }
@@ -298,15 +311,19 @@ void GameWidget::resetGame()
     m_bodyContact = false;
     m_flipTimer = 0.0;
     m_gameOverReason.clear();
-    m_cameraX = 0.0;
-    m_cameraY = 0.0;
+    m_currentSection = -1;
+    m_zoneBannerTime = 0.0;
+    m_cameraX = cameraTarget().x();
+    m_cameraY = cameraTarget().y();
     m_fuel = 100.0;
     m_survivalTime = 0.0;
-    m_nextPickupX = 720.0;
+    m_nextPickupX = m_spawnX + 400.0;
+    m_nextFuelX = m_spawnX + FuelSpacing * 0.6;
     m_score = 0;
     m_coins = 0;
     m_paused = false;
     m_gameOver = false;
+    m_finished = false;
     ensurePickupsAhead();
     m_clock.restart();
     update();
@@ -314,235 +331,117 @@ void GameWidget::resetGame()
 
 void GameWidget::tick()
 {
-    const qint64 elapsedMs = m_clock.restart();
-    const double frameTime = clampValue(elapsedMs / 1000.0, 0.0, 0.034);
+    // Nanosecond timing: two ticks can land in the same millisecond, and a zero
+    // time step would divide by zero inside the physics.
+    const qint64 elapsedNs = m_clock.nsecsElapsed();
+    m_clock.restart();
+    const double frameTime = clampValue(elapsedNs / 1e9, 0.0, 0.034);
 
     if (!m_paused && !m_gameOver) {
-        ensureTerrainAhead(std::max(m_chassis.position.x(), m_cameraX + DesignWidth) + 1400.0);
         updatePhysics(frameTime);
 
         updatePickups();
         ensurePickupsAhead();
         m_survivalTime += frameTime;
 
-        const double targetCameraX = std::max(0.0, m_chassis.position.x() - 560.0);
+        const int section = sectionAt(m_chassis.position.x());
+        if (section != m_currentSection) {
+            m_currentSection = section;
+            m_zoneBannerTime = 4.0;
+        }
+        m_zoneBannerTime = std::max(0.0, m_zoneBannerTime - frameTime);
 
-        // Frame the ground under the car, but drop the view far enough that
-        // valleys coming up ahead are visible before the car plunges in.
-        double lowestAhead = surfaceHeight(m_chassis.position.x());
-        for (double x = m_chassis.position.x() - 300.0; x <= m_chassis.position.x() + 1100.0; x += 50.0)
-            lowestAhead = std::min(lowestAhead, surfaceHeight(x));
-        double targetCameraY = std::min(surfaceHeight(m_chassis.position.x()) - 260.0,
-                                        lowestAhead - 70.0);
-        targetCameraY = std::max(targetCameraY, m_chassis.position.y() - 820.0);
+        const QPointF target = cameraTarget();
         const double follow = 1.0 - std::exp(-frameTime * 4.0);
-        m_cameraX += (targetCameraX - m_cameraX) * follow;
-        m_cameraY += (targetCameraY - m_cameraY) * follow;
+        m_cameraX += (target.x() - m_cameraX) * follow;
+        m_cameraY += (target.y() - m_cameraY) * follow;
     }
 
     update();
 }
 
-void GameWidget::resetTerrain()
+QPointF GameWidget::cameraTarget() const
 {
-    m_randomEngine.seed(QRandomGenerator::global()->generate());
-    m_terrainNodes.clear();
+    const double targetCameraX = std::max(0.0, m_chassis.position.x() - 560.0);
+
+    // Frame the ground under the car, then shift so the lowest and highest
+    // ground just ahead stay in view, and finally keep the car itself on
+    // screen. Screen y of world height h is DesignHeight - (h - cameraY).
+    double lowestAhead = surfaceHeight(m_chassis.position.x());
+    double highestAhead = lowestAhead;
+    for (double x = m_chassis.position.x() - 300.0; x <= m_chassis.position.x() + 1000.0; x += 40.0) {
+        const double height = surfaceHeight(x);
+        lowestAhead = std::min(lowestAhead, height);
+        highestAhead = std::max(highestAhead, height);
+    }
+    double targetCameraY = surfaceHeight(m_chassis.position.x()) - 260.0;
+    const double lowLimit = lowestAhead - 70.0;   // lowest ground no lower than 1010
+    const double highLimit = highestAhead - 940.0; // highest ground no higher than 140
+    targetCameraY = highLimit <= lowLimit ? clampValue(targetCameraY, highLimit, lowLimit)
+                                          : (highLimit + lowLimit) * 0.5;
+    targetCameraY = clampValue(targetCameraY, m_chassis.position.y() - 880.0,
+                               m_chassis.position.y() - 240.0);
+    return {targetCameraX, targetCameraY};
+}
+
+void GameWidget::loadCourse()
+{
+    // The course comes from data/terrain_10km.npz, exported to JSON by
+    // tools/export_terrain.py. Coordinates are metres with height up; world
+    // pixels are metres * pixels_per_metre with y up as well.
+    QFile file(QStringLiteral(":/assets/terrain_10km.json"));
+    if (!file.open(QIODevice::ReadOnly))
+        qFatal("Missing course data :/assets/terrain_10km.json");
+    const QJsonObject course = QJsonDocument::fromJson(file.readAll()).object();
+
+    m_pixelsPerMetre = course.value(QStringLiteral("pixels_per_metre")).toDouble(PixelsPerMetre);
+    const double scale = m_pixelsPerMetre;
+    m_spawnX = course.value(QStringLiteral("spawn_x_m")).toDouble() * scale;
+    m_finishX = course.value(QStringLiteral("finish_x_m")).toDouble() * scale;
+
+    m_chains.clear();
+    const QJsonArray polylines = course.value(QStringLiteral("polylines_m")).toArray();
+    for (const QJsonValue &polylineValue : polylines) {
+        const QJsonArray polyline = polylineValue.toArray();
+        if (polyline.size() < 2)
+            continue;
+        TerrainChain chain;
+        chain.startX = polyline.at(0).toArray().at(0).toDouble() * scale;
+        chain.step = (polyline.at(1).toArray().at(0).toDouble()
+                      - polyline.at(0).toArray().at(0).toDouble()) * scale;
+        chain.heights.reserve(polyline.size());
+        for (const QJsonValue &pointValue : polyline) {
+            const QJsonArray point = pointValue.toArray();
+            const double x = point.at(0).toDouble() * scale;
+            // Heights are looked up by index, which requires uniform sampling.
+            if (std::abs(x - (chain.startX + chain.step * chain.heights.size())) > 1e-6)
+                qFatal("Course chain is not uniformly sampled");
+            chain.heights.append(point.at(1).toDouble() * scale);
+        }
+        m_chains.append(chain);
+    }
+
     m_gaps.clear();
-    m_lastFeature = -1;
-
-    // A predictable, nearly flat launch area gives the car time to settle before
-    // the generated features begin.
-    appendTerrainNode(-900.0, 228.0);
-    appendTerrainNode(-400.0, 228.0);
-    appendTerrainNode(0.0, 228.0);
-    appendTerrainNode(360.0, 230.0);
-    appendTerrainNode(620.0, 240.0);
-
-    ensureTerrainAhead(DesignWidth + 1400.0);
-}
-
-void GameWidget::ensureTerrainAhead(double worldX)
-{
-    if (m_terrainNodes.isEmpty())
-        appendTerrainNode(-900.0, 228.0);
-
-    while (m_terrainNodes.constLast().x < worldX)
-        appendTerrainFeature();
-}
-
-double GameWidget::appendTerrainNode(double x, double y, std::optional<double> tangent)
-{
-    if (!m_terrainNodes.isEmpty()) {
-        const TerrainNode &previous = m_terrainNodes.constLast();
-        const double run = x - previous.x;
-        double maxClimb = MaxClimbSecant;
-        if (m_terrainNodes.size() >= 2) {
-            const TerrainNode &before = m_terrainNodes.at(m_terrainNodes.size() - 2);
-            const double incoming = (previous.y - before.y) / (previous.x - before.x);
-            if (incoming < 0.0)
-                maxClimb = std::min(maxClimb, std::max(0.0, MaxTroughBend + incoming));
-        }
-        y = clampValue(y, previous.y - MaxDropSecant * run, previous.y + maxClimb * run);
+    for (const QJsonValue &gapValue : course.value(QStringLiteral("gap_ranges_m")).toArray()) {
+        const QJsonArray gap = gapValue.toArray();
+        m_gaps.append({gap.at(0).toDouble() * scale, gap.at(1).toDouble() * scale});
     }
-    m_terrainNodes.push_back({x, y, tangent.value_or(0.0), tangent.has_value()});
 
-    // The previous node now has neighbours on both sides, so its tangent can be
-    // settled. Fritsch-Butland weighting keeps the curve monotone between nodes:
-    // peaks and troughs stay rounded and steps never overshoot.
-    const int count = static_cast<int>(m_terrainNodes.size());
-    if (count < 3)
-        return y;
-
-    TerrainNode &middle = m_terrainNodes[count - 2];
-    if (middle.fixedTangent)
-        return y;
-
-    const TerrainNode &before = m_terrainNodes.at(count - 3);
-    const TerrainNode &after = m_terrainNodes.at(count - 1);
-    const double h0 = middle.x - before.x;
-    const double h1 = after.x - middle.x;
-    const double d0 = (middle.y - before.y) / h0;
-    const double d1 = (after.y - middle.y) / h1;
-    if (d0 * d1 <= 0.0) {
-        middle.tangent = 0.0;
-    } else {
-        const double w0 = 2.0 * h1 + h0;
-        const double w1 = h1 + 2.0 * h0;
-        middle.tangent = (w0 + w1) / (w0 / d0 + w1 / d1);
-    }
-    return y;
-}
-
-void GameWidget::appendTerrainFeature()
-{
-    const TerrainNode last = m_terrainNodes.constLast();
-    const double difficulty = clampValue(last.x / 30000.0, 0.0, 1.0);
-    const double scale = 0.9 + 0.4 * difficulty;
-    const double middleHeight = (MinTerrainHeight + MaxTerrainHeight) * 0.5;
-
-    const auto uniform = [this](double minimum, double maximum) {
-        return std::uniform_real_distribution<double>(minimum, maximum)(m_randomEngine);
-    };
-    const auto keepInBand = [](double y) {
-        return clampValue(y, MinTerrainHeight, MaxTerrainHeight);
-    };
-
-    std::array<double, FeatureCount> weights{};
-    weights[Rolling] = 2.0;
-    weights[Waves] = 3.0;
-    weights[Bumps] = 2.0;
-    weights[Valley] = last.y - MinTerrainHeight > 250.0 ? 2.5 : 0.0;
-    weights[Steps] = 2.0;
-    weights[Gap] = last.x > 2600.0 ? 1.2 + difficulty : 0.0;
-    if (m_lastFeature >= 0)
-        weights[m_lastFeature] *= 0.25;
-    if (m_lastFeature == Gap)
-        weights[Gap] = 0.0;
-
-    std::discrete_distribution<int> pick(weights.begin(), weights.end());
-    const int feature = pick(m_randomEngine);
-    m_lastFeature = feature;
-
-    double x = last.x;
-    double y = last.y;
-
-    switch (feature) {
-    case Rolling: {
-        const int count = 2 + static_cast<int>(uniform(0.0, 3.0));
-        for (int i = 0; i < count; ++i) {
-            x += uniform(280.0, 420.0);
-            y = appendTerrainNode(
-                x, keepInBand(y + uniform(-160.0, 160.0) * scale + (middleHeight - y) * 0.2));
-        }
-        break;
-    }
-    case Waves: {
-        // A chain of rounded hills, optionally growing taller as they go.
-        const int hills = 3 + static_cast<int>(uniform(0.0, 3.0));
-        const double trend = (y < middleHeight ? 1.0 : -1.0) * uniform(20.0, 60.0);
-        const bool growing = uniform(0.0, 1.0) < 0.5;
-        for (int i = 0; i < hills; ++i) {
-            const double halfWave = uniform(270.0, 360.0);
-            const double amplitude =
-                std::min(260.0, (growing ? 70.0 + i * 45.0 : uniform(110.0, 200.0)) * scale);
-            y = clampValue(y + trend, MinTerrainHeight, MaxTerrainHeight - amplitude);
-            x += halfWave;
-            appendTerrainNode(x, y + amplitude);
-            x += halfWave;
-            y = appendTerrainNode(x, y);
-        }
-        break;
-    }
-    case Bumps: {
-        // Short, low ripples that rattle the suspension.
-        const int count = 5 + static_cast<int>(uniform(0.0, 4.0));
-        const double trend = uniform(-6.0, 6.0);
-        for (int i = 0; i < count; ++i) {
-            const double halfWave = uniform(85.0, 115.0);
-            y = keepInBand(y + trend);
-            x += halfWave;
-            appendTerrainNode(x, y + std::min(30.0, uniform(18.0, 28.0) * scale));
-            x += halfWave;
-            y = appendTerrainNode(x, y);
-        }
-        break;
-    }
-    case Valley: {
-        // Plunge into a basin, roll over a couple of bumps, then climb out.
-        const double depth = std::min(uniform(280.0, 460.0) * scale, y - MinTerrainHeight);
-        x += uniform(480.0, 600.0);
-        const double floor = appendTerrainNode(x, y - depth);
-        for (int i = 0; i < 2; ++i) {
-            x += uniform(110.0, 130.0);
-            appendTerrainNode(x, floor + uniform(18.0, 32.0));
-            x += uniform(110.0, 130.0);
-            appendTerrainNode(x, floor);
-        }
-        const double exitHeight = keepInBand(last.y + uniform(-80.0, 60.0));
-        x += uniform(340.0, 420.0);
-        appendTerrainNode(x, floor + (exitHeight - floor) * 0.55);
-        x += uniform(320.0, 400.0);
-        appendTerrainNode(x, exitHeight);
-        x += 220.0;
-        appendTerrainNode(x, keepInBand(exitHeight + uniform(-10.0, 10.0)));
-        break;
-    }
-    case Steps: {
-        // Terraces: a short steep riser followed by a flat tread.
-        const double direction = y < MaxTerrainHeight - 380.0 ? 1.0 : -1.0;
-        const int count = 3 + static_cast<int>(uniform(0.0, 2.0));
-        for (int i = 0; i < count; ++i) {
-            x += uniform(170.0, 220.0);
-            y = appendTerrainNode(x, keepInBand(y + direction * uniform(70.0, 105.0) * scale));
-            x += uniform(230.0, 320.0);
-            y = appendTerrainNode(x, keepInBand(y + direction * uniform(0.0, 8.0)));
-        }
-        break;
-    }
-    case Gap: {
-        // Run-up, a kicker whose lip points upward, the chasm, then a slightly
-        // lower landing that slopes away to soften the touchdown.
-        y = std::min(y, MaxTerrainHeight - 60.0);
-        x += uniform(420.0, 520.0);
-        y = appendTerrainNode(x, keepInBand(y - uniform(0.0, 25.0)));
-        x += uniform(260.0, 320.0);
-        y = appendTerrainNode(x, y + uniform(35.0, 55.0), uniform(0.32, 0.4));
-        const double gapStart = x;
-        x += uniform(200.0, 240.0) + 60.0 * difficulty;
-        y = appendTerrainNode(x, y - uniform(30.0, 70.0), -0.12);
-        m_gaps.push_back({gapStart, x});
-        x += uniform(300.0, 380.0);
-        y = keepInBand(y - uniform(10.0, 40.0));
-        appendTerrainNode(x, y);
-        break;
-    }
-    default:
-        break;
+    m_sections.clear();
+    const QJsonArray bounds = course.value(QStringLiteral("section_bounds_m")).toArray();
+    const QJsonArray names = course.value(QStringLiteral("section_names")).toArray();
+    for (int i = 0; i < bounds.size(); ++i) {
+        const QJsonArray range = bounds.at(i).toArray();
+        m_sections.append({range.at(0).toDouble() * scale, range.at(1).toDouble() * scale,
+                           names.at(i).toString().toUpper()});
     }
 }
 
 void GameWidget::updatePhysics(double dt)
 {
+    if (dt <= 0.0)
+        return;
+
     const bool accelerate = m_keys.contains(Qt::Key_Right) || m_keys.contains(Qt::Key_D);
     const bool reverse = m_keys.contains(Qt::Key_Left) || m_keys.contains(Qt::Key_A);
     const bool boost = m_keys.contains(Qt::Key_Space);
@@ -580,7 +479,10 @@ void GameWidget::updatePhysics(double dt)
                               && std::abs(m_chassis.velocity.x()) < 16.0;
     const bool fellIntoGap =
         m_chassis.position.y() < surfaceHeight(m_chassis.position.x()) - 220.0;
-    if (m_headHit)
+    if (m_chassis.position.x() >= m_finishX) {
+        m_finished = true;
+        m_gameOverReason = QStringLiteral("FINISHED!");
+    } else if (m_headHit)
         m_gameOverReason = QStringLiteral("HEAD CRASH");
     else if (m_flipTimer > FlipGraceTime)
         m_gameOverReason = QStringLiteral("FLIPPED OVER");
@@ -594,9 +496,8 @@ void GameWidget::updatePhysics(double dt)
         m_keys.clear();
     }
 
-    m_score = std::max(m_score,
-                       static_cast<int>(std::max(0.0, m_chassis.position.x() - 360.0) / 4.0)
-                           + m_coins * 100);
+    const double metres = std::max(0.0, m_chassis.position.x()) / m_pixelsPerMetre;
+    m_score = std::max(m_score, static_cast<int>(metres * 2.5) + m_coins * 100);
 }
 
 void GameWidget::stepPhysics(double h, double throttle, bool boost)
@@ -627,7 +528,8 @@ void GameWidget::stepPhysics(double h, double throttle, bool boost)
         const double spin = -wheel.angularVelocity;
         double torque = 0.0;
         if (throttle > 0.0 && hasFuel) {
-            torque = -driveTorque * clampValue(1.0 - spin / maxSpin, 0.0, 1.0);
+            // Flat torque through the low and mid range, fading near top speed.
+            torque = -driveTorque * clampValue((maxSpin - spin) / (maxSpin * 0.15), 0.0, 1.0);
         } else if (throttle < 0.0) {
             if (spin > 0.5)
                 torque = std::min(BrakeTorque, spin / (wheel.inverseInertia * h));
@@ -658,7 +560,7 @@ void GameWidget::stepPhysics(double h, double throttle, bool boost)
     //    point, held by a spring and bounded by bump stops.
     for (int i = 0; i < 2; ++i) {
         RigidBody &wheel = m_wheels[i];
-        const QPointF mount(i == 0 ? -WheelOffset : WheelOffset, WheelLocalY);
+        const QPointF mount = chassisLocal(i == 0 ? -WheelOffset : WheelOffset, WheelLocalY);
 
         const auto extension = [&](QPointF *up, QPointF *side) {
             *up = rotatePoint(QPointF(0.0, 1.0), m_chassis.angle);
@@ -735,7 +637,7 @@ void GameWidget::stepPhysics(double h, double throttle, bool boost)
     }
     for (const BodyCollider &collider : ChassisColliders) {
         const QPointF center =
-            m_chassis.position + rotatePoint(QPointF(collider.x, collider.y), m_chassis.angle);
+            m_chassis.position + rotatePoint(chassisLocal(collider.x, collider.y), m_chassis.angle);
         if (collide(m_chassis, center, collider.radius, BodyStaticFriction, BodyDynamicFriction)) {
             m_bodyContact = true;
             if (collider.head)
@@ -785,15 +687,17 @@ void GameWidget::stepPhysics(double h, double throttle, bool boost)
 bool GameWidget::findTerrainContact(const QPointF &center, double radius,
                                     QPointF *normal, double *depth) const
 {
-    // Build the ground outline around the circle, including the vertical rock
-    // faces and floor of any chasm, then find the closest point on it.
-    constexpr double Step = 3.0;
+    // Build the ground outline around the circle from the course vertices
+    // (ground is linear between them), plus the vertical rock faces and floor
+    // of any ravine, then find the closest point on it.
+    const double step = m_chains.isEmpty() ? 20.0 : m_chains.constFirst().step;
     const double reach = radius + 6.0;
     const double left = center.x() - reach;
     const double right = center.x() + reach;
 
     QVarLengthArray<double, 64> xs;
-    for (double x = left; x < right; x += Step)
+    xs.append(left);
+    for (double x = std::floor(left / step) * step + step; x < right; x += step)
         xs.append(x);
     xs.append(right);
     for (const TerrainGap &gap : m_gaps) {
@@ -869,7 +773,7 @@ void GameWidget::updatePickups()
             if (pickup.type == Pickup::Type::Coin) {
                 ++m_coins;
             } else {
-                m_fuel = std::min(100.0, m_fuel + 38.0);
+                m_fuel = 100.0;
                 m_score += 250;
             }
         }
@@ -884,14 +788,24 @@ void GameWidget::updatePickups()
 
 void GameWidget::ensurePickupsAhead()
 {
-    const double horizon = m_cameraX + DesignWidth + 900.0;
-    // Generate past the horizon so the curve under new pickups is final.
-    ensureTerrainAhead(horizon + 1200.0);
+    const double horizon = std::min(m_cameraX + DesignWidth + 900.0, m_finishX - 400.0);
     while (m_nextPickupX < horizon) {
+        // Keep pickups away from ravines and their kickers.
+        bool nearGap = false;
+        for (const TerrainGap &gap : m_gaps) {
+            if (m_nextPickupX > gap.start - 500.0 && m_nextPickupX < gap.end + 150.0) {
+                m_nextPickupX = gap.end + 150.0;
+                nearGap = true;
+            }
+        }
+        if (nearGap)
+            continue;
+
         const int group = static_cast<int>(m_nextPickupX / 420.0);
-        const bool placeFuel = group > 0 && group % 7 == 0;
+        const bool placeFuel = m_nextPickupX >= m_nextFuelX;
 
         if (placeFuel) {
+            m_nextFuelX += FuelSpacing;
             m_pickups.push_back({Pickup::Type::Fuel,
                                  QPointF(m_nextPickupX,
                                          surfaceHeight(m_nextPickupX) + 104.0),
@@ -911,22 +825,26 @@ void GameWidget::ensurePickupsAhead()
     }
 }
 
-int GameWidget::terrainSegmentFor(double x) const
+const GameWidget::TerrainChain *GameWidget::chainAt(double x) const
 {
-    if (m_terrainNodes.size() < 2)
-        return 0;
+    auto it = std::upper_bound(m_chains.cbegin(), m_chains.cend(), x,
+                               [](double value, const TerrainChain &chain) {
+                                   return value < chain.startX;
+                               });
+    if (it == m_chains.cbegin())
+        return nullptr;
+    --it;
+    return x <= it->endX() ? &*it : nullptr;
+}
 
-    int low = 0;
-    int high = static_cast<int>(m_terrainNodes.size()) - 1;
-    while (low + 1 < high) {
-        const int middle = low + (high - low) / 2;
-        if (m_terrainNodes.at(middle).x <= x)
-            low = middle;
-        else
-            high = middle;
-    }
-
-    return std::clamp(low, 0, static_cast<int>(m_terrainNodes.size()) - 2);
+double GameWidget::chainHeight(const TerrainChain &chain, double x) const
+{
+    // Linear interpolation between the chain's own samples only.
+    const double position = clampValue((x - chain.startX) / chain.step, 0.0,
+                                       static_cast<double>(chain.heights.size() - 1));
+    const int index = std::min(static_cast<int>(position), static_cast<int>(chain.heights.size()) - 2);
+    const double t = position - index;
+    return chain.heights.at(index) + (chain.heights.at(index + 1) - chain.heights.at(index)) * t;
 }
 
 const GameWidget::TerrainGap *GameWidget::gapAt(double x) const
@@ -941,48 +859,50 @@ const GameWidget::TerrainGap *GameWidget::gapAt(double x) const
     return x > it->start && x < it->end ? &*it : nullptr;
 }
 
-double GameWidget::surfaceHeight(double x) const
+int GameWidget::sectionAt(double x) const
 {
-    if (m_terrainNodes.isEmpty())
-        return 228.0;
-    if (m_terrainNodes.size() == 1 || x <= m_terrainNodes.constFirst().x)
-        return m_terrainNodes.constFirst().y;
-    if (x >= m_terrainNodes.constLast().x)
-        return m_terrainNodes.constLast().y;
-
-    const int index = terrainSegmentFor(x);
-    const TerrainNode &a = m_terrainNodes.at(index);
-    const TerrainNode &b = m_terrainNodes.at(index + 1);
-    const double h = b.x - a.x;
-    const double t = clampValue((x - a.x) / h, 0.0, 1.0);
-    const double t2 = t * t;
-    const double t3 = t2 * t;
-
-    return (2.0 * t3 - 3.0 * t2 + 1.0) * a.y
-           + (t3 - 2.0 * t2 + t) * h * a.tangent
-           + (-2.0 * t3 + 3.0 * t2) * b.y
-           + (t3 - t2) * h * b.tangent;
+    for (int i = 0; i < m_sections.size(); ++i) {
+        if (x < m_sections.at(i).end)
+            return i;
+    }
+    return static_cast<int>(m_sections.size()) - 1;
 }
 
+// Ground height for solid ground. Across a ravine this returns a straight line
+// between the two lips; that is only for framing the camera, placing pickups and
+// detecting a fall. Collision uses terrainHeight() and the outline, which never
+// bridge a ravine.
+double GameWidget::surfaceHeight(double x) const
+{
+    if (m_chains.isEmpty())
+        return 0.0;
+    if (const TerrainChain *chain = chainAt(x))
+        return chainHeight(*chain, x);
+    if (x < m_chains.constFirst().startX)
+        return m_chains.constFirst().heights.constFirst();
+    for (int i = 1; i < m_chains.size(); ++i) {
+        const TerrainChain &before = m_chains.at(i - 1);
+        const TerrainChain &after = m_chains.at(i);
+        if (x > before.endX() && x < after.startX) {
+            const double t = (x - before.endX()) / (after.startX - before.endX());
+            return before.heights.constLast() + (after.heights.constFirst() - before.heights.constLast()) * t;
+        }
+    }
+    return m_chains.constLast().heights.constLast();
+}
+
+// Slope from a central difference over one sample on each side, kept inside a
+// single chain, so normals and tilt vary smoothly along the polyline.
 double GameWidget::surfaceSlope(double x) const
 {
-    if (m_terrainNodes.size() < 2
-        || x <= m_terrainNodes.constFirst().x
-        || x >= m_terrainNodes.constLast().x) {
+    const TerrainChain *chain = chainAt(x);
+    if (!chain)
         return 0.0;
-    }
-
-    const int index = terrainSegmentFor(x);
-    const TerrainNode &a = m_terrainNodes.at(index);
-    const TerrainNode &b = m_terrainNodes.at(index + 1);
-    const double h = b.x - a.x;
-    const double t = clampValue((x - a.x) / h, 0.0, 1.0);
-    const double t2 = t * t;
-
-    return ((6.0 * t2 - 6.0 * t) * a.y
-            + (3.0 * t2 - 4.0 * t + 1.0) * h * a.tangent
-            + (-6.0 * t2 + 6.0 * t) * b.y
-            + (3.0 * t2 - 2.0 * t) * h * b.tangent) / h;
+    const double x0 = std::max(chain->startX, x - chain->step);
+    const double x1 = std::min(chain->endX(), x + chain->step);
+    if (x1 - x0 < 1e-9)
+        return 0.0;
+    return (chainHeight(*chain, x1) - chainHeight(*chain, x0)) / (x1 - x0);
 }
 
 double GameWidget::terrainHeight(double x) const
@@ -1004,6 +924,7 @@ void GameWidget::paintEvent(QPaintEvent *)
 
     drawBackground(painter);
     drawTerrain(painter);
+    drawFinishLine(painter);
     drawPickups(painter);
     drawCar(painter);
     drawHud(painter);
@@ -1121,8 +1042,9 @@ void GameWidget::drawTerrain(QPainter &painter) const
 void GameWidget::drawTerrainSection(QPainter &painter, double start, double end,
                                     bool leftCliff, bool rightCliff) const
 {
-    // Sample on a fixed world grid so the outline does not shimmer as it scrolls.
-    constexpr double Step = 8.0;
+    // Sample exactly on the course vertices so the drawn ground is the
+    // collision ground and the outline does not shimmer as it scrolls.
+    const double Step = m_chains.isEmpty() ? 20.0 : m_chains.constFirst().step;
     QVector<double> xs{start};
     for (double x = std::floor(start / Step) * Step + Step; x < end; x += Step)
         xs << x;
@@ -1235,7 +1157,8 @@ void GameWidget::drawTerrainSection(QPainter &painter, double start, double end,
     for (const QPointF &point : surface)
         turf << point;
     for (int i = static_cast<int>(surface.size()) - 1; i >= 0; --i) {
-        const qint64 cell = qRound64(xs.at(i) / Step);
+        // Ragged underside: every second 4 px step along the band dips lower.
+        const qint64 cell = qRound64(xs.at(i) / 4.0);
         const double fringe = (cell % 2 == 0 ? 0.0 : 8.0) + 4.0 * hashUnit(cell);
         const bool edge = (leftCliff && i == 0) || (rightCliff && i == surface.size() - 1);
         turf << surface.at(i) + downNormals.at(i) * (edge ? GrassThickness : GrassThickness + fringe);
@@ -1303,6 +1226,35 @@ void GameWidget::drawTerrainSection(QPainter &painter, double start, double end,
     }
 }
 
+void GameWidget::drawFinishLine(QPainter &painter) const
+{
+    const QPointF base = worldToScreen(QPointF(m_finishX, surfaceHeight(m_finishX)));
+    if (base.x() < -200.0 || base.x() > DesignWidth + 200.0)
+        return;
+
+    // A chequered banner on two posts spanning the road.
+    constexpr double Height = 260.0;
+    constexpr double Width = 180.0;
+    constexpr double Cell = 20.0;
+    painter.save();
+    painter.setPen(QPen(QColor(40, 40, 40), 8.0, Qt::SolidLine, Qt::RoundCap));
+    painter.drawLine(base + QPointF(-Width * 0.5, 0.0), base + QPointF(-Width * 0.5, -Height));
+    painter.drawLine(base + QPointF(Width * 0.5, 0.0), base + QPointF(Width * 0.5, -Height));
+    painter.setPen(Qt::NoPen);
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < static_cast<int>(Width / Cell); ++column) {
+            painter.setBrush((row + column) % 2 == 0 ? QColor(20, 20, 20) : QColor(245, 245, 245));
+            painter.drawRect(QRectF(base.x() - Width * 0.5 + column * Cell,
+                                    base.y() - Height + row * Cell, Cell, Cell));
+        }
+    }
+    painter.setPen(QColor(255, 206, 60));
+    painter.setFont(QFont(QStringLiteral("Segoe UI"), 20, QFont::Black));
+    painter.drawText(QRectF(base.x() - 150.0, base.y() - Height - 46.0, 300.0, 40.0),
+                     Qt::AlignCenter, QStringLiteral("FINISH"));
+    painter.restore();
+}
+
 void GameWidget::drawPickups(QPainter &painter) const
 {
     for (const Pickup &pickup : m_pickups) {
@@ -1364,6 +1316,8 @@ void GameWidget::drawCar(QPainter &painter) const
     painter.save();
     painter.translate(worldToScreen(m_chassis.position));
     painter.rotate(-m_chassis.angle * 180.0 / Pi);
+    // Move from the centre of mass to the artwork origin (screen y is down).
+    painter.translate(0.0, CenterOfMassY);
     const double spriteLeft = -CarSourceCenterX * CarSpriteScale;
     const double spriteTop = -WheelLocalY - WheelSourceY * CarSpriteScale;
     painter.drawPixmap(
@@ -1388,7 +1342,7 @@ void GameWidget::drawHud(QPainter &painter) const
     painter.drawText(QPointF(425.0, 79.0), QStringLiteral("SCORE"));
 
     painter.setFont(QFont(QStringLiteral("Segoe UI"), 30, QFont::Black));
-    const int distance = static_cast<int>(std::max(0.0, m_chassis.position.x() - 360.0) / 10.0);
+    const int distance = static_cast<int>(std::max(0.0, m_chassis.position.x()) / m_pixelsPerMetre);
     painter.drawText(QPointF(76.0, 125.0), QStringLiteral("%1 m").arg(distance));
     painter.setPen(QColor(255, 211, 55));
     painter.drawText(QPointF(300.0, 125.0), QString::number(m_coins));
@@ -1422,6 +1376,39 @@ void GameWidget::drawHud(QPainter &painter) const
     painter.setFont(QFont(QStringLiteral("Segoe UI"), 14, QFont::Medium));
     painter.drawText(QRectF(760.0, 30.0, 400.0, 40.0), Qt::AlignCenter,
                      QStringLiteral("P  PAUSE     •     R  RESTART     •     ESC  QUIT"));
+
+    if (!m_sections.isEmpty()) {
+        const CourseSection &section = m_sections.at(sectionAt(m_chassis.position.x()));
+        const QString range = QStringLiteral("%1–%2 KM")
+                                  .arg(section.start / m_pixelsPerMetre / 1000.0)
+                                  .arg(section.end / m_pixelsPerMetre / 1000.0);
+
+        // Persistent section label under the controls hint.
+        painter.setPen(QColor(255, 226, 120, 220));
+        painter.setFont(QFont(QStringLiteral("Segoe UI"), 15, QFont::Bold));
+        painter.drawText(QRectF(560.0, 64.0, 800.0, 32.0), Qt::AlignCenter,
+                         QStringLiteral("%1  ·  %2   (%3 / %4 m)")
+                             .arg(range, section.name)
+                             .arg(distance)
+                             .arg(static_cast<int>(m_finishX / m_pixelsPerMetre)));
+
+        // Large banner that fades out after entering a new section.
+        if (m_zoneBannerTime > 0.0) {
+            const double alpha = clampValue(m_zoneBannerTime, 0.0, 1.0);
+            const QRectF banner(610.0, 120.0, 700.0, 110.0);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(7, 21, 32, static_cast<int>(185 * alpha)));
+            painter.drawRoundedRect(banner, 26.0, 26.0);
+            painter.setPen(QColor(255, 255, 255, static_cast<int>(200 * alpha)));
+            painter.setFont(QFont(QStringLiteral("Segoe UI"), 16, QFont::DemiBold));
+            painter.drawText(QRectF(banner.left(), banner.top() + 12.0, banner.width(), 30.0),
+                             Qt::AlignCenter, range);
+            painter.setPen(QColor(255, 206, 60, static_cast<int>(255 * alpha)));
+            painter.setFont(QFont(QStringLiteral("Segoe UI"), 34, QFont::Black));
+            painter.drawText(QRectF(banner.left(), banner.top() + 42.0, banner.width(), 56.0),
+                             Qt::AlignCenter, section.name);
+        }
+    }
     painter.restore();
 }
 
@@ -1459,7 +1446,7 @@ void GameWidget::drawOverlay(QPainter &painter) const
     painter.drawText(QRectF(650.0, 365.0, 620.0, 90.0), Qt::AlignCenter,
                      m_gameOver ? m_gameOverReason : QStringLiteral("PAUSED"));
 
-    const int distance = static_cast<int>(std::max(0.0, m_chassis.position.x() - 360.0) / 10.0);
+    const int distance = static_cast<int>(std::max(0.0, m_chassis.position.x()) / m_pixelsPerMetre);
     painter.setPen(QColor(200, 222, 232));
     painter.setFont(QFont(QStringLiteral("Segoe UI"), 24, QFont::DemiBold));
     painter.drawText(QRectF(650.0, 475.0, 620.0, 55.0), Qt::AlignCenter,
@@ -1472,7 +1459,9 @@ void GameWidget::drawOverlay(QPainter &painter) const
     painter.setPen(Qt::white);
     painter.setFont(QFont(QStringLiteral("Segoe UI"), 22, QFont::Black));
     painter.drawText(QRectF(810.0, 565.0, 300.0, 74.0), Qt::AlignCenter,
-                     m_gameOver ? QStringLiteral("R  TRY AGAIN") : QStringLiteral("P  RESUME"));
+                     !m_gameOver ? QStringLiteral("P  RESUME")
+                                 : (m_finished ? QStringLiteral("R  RACE AGAIN")
+                                               : QStringLiteral("R  TRY AGAIN")));
 }
 
 void GameWidget::keyPressEvent(QKeyEvent *event)

@@ -9,8 +9,6 @@
 #include <QWidget>
 
 #include <array>
-#include <optional>
-#include <random>
 
 class QKeyEvent;
 class QPaintEvent;
@@ -53,29 +51,34 @@ private:
         bool collected = false;
     };
 
-    // Control point of the terrain curve. Heights between nodes come from a
-    // cubic Hermite spline; most tangents are derived to keep it overshoot-free.
-    struct TerrainNode {
-        double x = 0.0;
-        double y = 0.0;
-        double tangent = 0.0;
-        bool fixedTangent = false;
+    // One continuous run of ground from the course data: heights (world
+    // pixels, y up) sampled at a fixed horizontal step. Chains are never joined;
+    // the space between two chains is a ravine.
+    struct TerrainChain {
+        double startX = 0.0;
+        double step = 0.0;
+        QVector<double> heights;
+
+        [[nodiscard]] double endX() const { return startX + step * (heights.size() - 1); }
     };
 
-    // A chasm cut into the terrain between two ledges.
+    // A ravine between a takeoff lip (start) and a landing lip (end).
     struct TerrainGap {
         double start = 0.0;
         double end = 0.0;
+    };
+
+    struct CourseSection {
+        double start = 0.0;
+        double end = 0.0;
+        QString name;
     };
 
     static constexpr int DesignWidth = 1920;
     static constexpr int DesignHeight = 1080;
 
     void resetGame();
-    void resetTerrain();
-    void ensureTerrainAhead(double worldX);
-    void appendTerrainFeature();
-    double appendTerrainNode(double x, double y, std::optional<double> tangent = std::nullopt);
+    void loadCourse();
     void buildSoilTexture();
     void updatePhysics(double dt);
     void stepPhysics(double h, double throttle, bool boost);
@@ -84,17 +87,21 @@ private:
     void updatePickups();
     void ensurePickupsAhead();
 
-    [[nodiscard]] int terrainSegmentFor(double x) const;
+    [[nodiscard]] const TerrainChain *chainAt(double x) const;
+    [[nodiscard]] double chainHeight(const TerrainChain &chain, double x) const;
     [[nodiscard]] const TerrainGap *gapAt(double x) const;
+    [[nodiscard]] int sectionAt(double x) const;
     [[nodiscard]] double surfaceHeight(double x) const;
     [[nodiscard]] double surfaceSlope(double x) const;
     [[nodiscard]] double terrainHeight(double x) const;
     [[nodiscard]] QPointF worldToScreen(const QPointF &world) const;
+    [[nodiscard]] QPointF cameraTarget() const;
 
     void drawBackground(QPainter &painter) const;
     void drawTerrain(QPainter &painter) const;
     void drawTerrainSection(QPainter &painter, double start, double end,
                             bool leftCliff, bool rightCliff) const;
+    void drawFinishLine(QPainter &painter) const;
     void drawPickups(QPainter &painter) const;
     void drawCar(QPainter &painter) const;
     void drawHud(QPainter &painter) const;
@@ -106,13 +113,16 @@ private:
     QElapsedTimer m_clock;
     QSet<int> m_keys;
     QVector<Pickup> m_pickups;
-    QVector<TerrainNode> m_terrainNodes;
+    QVector<TerrainChain> m_chains;
     QVector<TerrainGap> m_gaps;
+    QVector<CourseSection> m_sections;
+    double m_pixelsPerMetre = 80.0;
+    double m_spawnX = 800.0;
+    double m_finishX = 800000.0;
     QPixmap m_carBody;
     QPixmap m_wheelSprite;
     QPixmap m_backgroundStrip;
     QPixmap m_soilTexture;
-    std::mt19937 m_randomEngine;
 
     RigidBody m_chassis;
     std::array<RigidBody, 2> m_wheels;
@@ -125,10 +135,13 @@ private:
     double m_cameraY = 0.0;
     double m_fuel = 100.0;
     double m_survivalTime = 0.0;
-    double m_nextPickupX = 780.0;
-    int m_lastFeature = -1;
+    double m_nextPickupX = 0.0;
+    double m_nextFuelX = 0.0;
+    int m_currentSection = -1;
+    double m_zoneBannerTime = 0.0;
     int m_score = 0;
     int m_coins = 0;
     bool m_paused = false;
     bool m_gameOver = false;
+    bool m_finished = false;
 };
