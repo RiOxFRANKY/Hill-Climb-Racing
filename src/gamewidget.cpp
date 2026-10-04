@@ -25,12 +25,16 @@
 namespace {
 constexpr double Pi = 3.14159265358979323846;
 constexpr double WheelRadius = 40.0;
-constexpr double BodyWheelReferenceRadius = 185.0;
+// Car artwork geometry, in car_body.png pixels: the wheel-arch centres and the
+// tyre radius that fills them. The body is scaled so that radius matches the
+// physical wheel.
+constexpr double BodyWheelReferenceRadius = 180.0;
 constexpr double CarSpriteScale = WheelRadius / BodyWheelReferenceRadius;
-constexpr double WheelSpriteTargetRadius = 46.3;
-constexpr double RearWheelSourceX = 419.0;
-constexpr double FrontWheelSourceX = 1356.0;
-constexpr double WheelSourceY = 730.0;
+constexpr double RearWheelSourceX = 395.0;
+constexpr double FrontWheelSourceX = 1345.0;
+constexpr double WheelSourceY = 830.0;
+// The tyre in wheel.png spans 1076 of its 1254 pixels.
+constexpr double WheelSpriteTargetRadius = WheelRadius * 1254.0 / 1076.0;
 constexpr double WheelOffset = (FrontWheelSourceX - RearWheelSourceX) * 0.5 * CarSpriteScale;
 constexpr double WheelLocalY = -43.0;
 constexpr double CarSourceCenterX = (RearWheelSourceX + FrontWheelSourceX) * 0.5;
@@ -92,16 +96,16 @@ struct BodyCollider {
 };
 
 constexpr std::array<BodyCollider, 8> ChassisColliders{{
-    {-170.0, -5.0, 16.0, false},  // spare tyre
+    {-165.0, 8.0, 20.0, false},   // spare tyre
     // Bumper circles sit high and tucked in so the car clears slopes of about
     // 60 degrees (approach and departure angles), as the course demands.
-    {-135.0, -22.0, 9.0, false},  // rear bumper
-    {138.0, -5.0, 11.0, false},   // front bumper
-    {120.0, 26.0, 9.0, false},    // bonnet
-    {-5.0, -32.0, 10.0, false},   // floor pan
-    {-92.0, 80.0, 9.0, false},    // roll cage
-    {24.0, 78.0, 9.0, false},     // windscreen frame
-    {-38.0, 68.0, 15.0, true},    // driver's head
+    {-138.0, -20.0, 9.0, false},  // rear bumper
+    {142.0, -5.0, 11.0, false},   // front bumper
+    {125.0, 30.0, 9.0, false},    // bonnet
+    {0.0, -32.0, 10.0, false},    // skid plate
+    {-90.0, 90.0, 9.0, false},    // roll cage
+    {28.0, 92.0, 9.0, false},     // windscreen frame
+    {-38.0, 80.0, 16.0, true},    // driver's head
 }};
 
 // Floor of every ravine, far below the lowest point of the course.
