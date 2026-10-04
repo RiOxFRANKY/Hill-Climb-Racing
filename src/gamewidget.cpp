@@ -110,8 +110,9 @@ constexpr std::array<BodyCollider, 8> ChassisColliders{{
 
 // Floor of every ravine, far below the lowest point of the course.
 constexpr double GapFloor = -20000.0;
-constexpr double GrassThickness = 24.0;
-constexpr int SoilTileSize = 1024;
+// The ground is drawn as pixel art: one art pixel covers this many world
+// pixels, and the art-pixel grid is anchored to the world.
+constexpr int TerrainPixel = 4;
 
 // Fuel cans appear at this spacing along the course.
 constexpr double FuelSpacing = 250.0 * PixelsPerMetre;
@@ -200,62 +201,6 @@ quint32 hashValue(qint64 value)
     return static_cast<quint32>(x ^ (x >> 31));
 }
 
-double hashUnit(qint64 value)
-{
-    return hashValue(value) / 4294967295.0;
-}
-
-void drawRock(QPainter &painter, const QPointF &center, double radius, quint32 seed)
-{
-    quint32 state = seed | 1u;
-    const auto next = [&state] {
-        state ^= state << 13;
-        state ^= state >> 17;
-        state ^= state << 5;
-        return state / 4294967295.0;
-    };
-
-    const int corners = 7 + static_cast<int>(next() * 3.0);
-    const double turn = next() * 2.0 * Pi;
-    QPolygonF shape;
-    for (int i = 0; i < corners; ++i) {
-        const double angle = turn + (i + (next() - 0.5) * 0.5) * 2.0 * Pi / corners;
-        const double distance = radius * (0.78 + 0.22 * next());
-        shape << center + QPointF(std::cos(angle) * distance * 1.12,
-                                  std::sin(angle) * distance * 0.9);
-    }
-
-    const int shade = static_cast<int>(next() * 26.0) - 13;
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(112 + shade, 98 + shade, 88 + shade));
-    painter.drawPolygon(shape);
-
-    // A lighter upper-left facet gives the chunky, cel-shaded stone look.
-    QPolygonF facet;
-    for (const QPointF &corner : shape)
-        facet << center + (corner - center) * 0.58 + QPointF(-radius * 0.16, -radius * 0.2);
-    painter.setBrush(QColor(150 + shade, 136 + shade, 122 + shade, 210));
-    painter.drawPolygon(facet);
-
-    painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(QColor(52, 38, 28), std::max(1.6, radius * 0.09),
-                        Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawPolygon(shape);
-}
-
-// Jagged rock face running from a ledge down past the bottom of the screen.
-// `inward` is +1 when the solid ground lies to the right of the wall.
-QVector<QPointF> cliffWall(const QPointF &top, double bottomY, int inward, quint32 seed)
-{
-    QVector<QPointF> points{top};
-    int step = 1;
-    for (double y = top.y() + 34.0; y < bottomY + 34.0; y += 34.0, ++step) {
-        const double depth = y - top.y();
-        const double jag = 4.0 + 14.0 * hashUnit(seed + step);
-        points << QPointF(top.x() - inward * depth * 0.1 + inward * jag, y);
-    }
-    return points;
-}
 }
 
 GameWidget::GameWidget(QWidget *parent)
@@ -269,7 +214,6 @@ GameWidget::GameWidget(QWidget *parent)
 
     m_carBody.load(QStringLiteral(":/assets/car_body.png"));
     m_wheelSprite.load(QStringLiteral(":/assets/wheel.png"));
-    buildSoilTexture();
     loadCourse();
 
     // The backdrop is not seamless, so it alternates with a mirrored copy; the
@@ -953,281 +897,145 @@ void GameWidget::drawBackground(QPainter &painter) const
         painter.drawPixmap(QPointF(stripWidth - shift, 0.0), m_backgroundStrip);
 }
 
-void GameWidget::buildSoilTexture()
-{
-    // One seamless soil tile, painted once: mottled dirt, grit, pebbles and
-    // chunky outlined rocks. Everything is also drawn shifted by a tile in each
-    // direction so features crossing an edge continue on the other side.
-    QImage tile(SoilTileSize, SoilTileSize, QImage::Format_ARGB32_Premultiplied);
-    tile.fill(QColor(146, 92, 48));
-    QPainter painter(&tile);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-
-    std::mt19937 rng(20261003u);
-    const auto uniform = [&rng](double minimum, double maximum) {
-        return std::uniform_real_distribution<double>(minimum, maximum)(rng);
-    };
-    const auto wrapped = [](const QPointF &center, const auto &draw) {
-        for (int dx = -1; dx <= 1; ++dx) {
-            for (int dy = -1; dy <= 1; ++dy)
-                draw(center + QPointF(dx * SoilTileSize, dy * SoilTileSize));
-        }
-    };
-
-    const std::array<QColor, 4> mottles{QColor(126, 76, 36, 70), QColor(164, 108, 58, 60),
-                                        QColor(112, 66, 30, 55), QColor(152, 98, 50, 70)};
-    painter.setPen(Qt::NoPen);
-    for (int i = 0; i < 260; ++i) {
-        const QPointF center(uniform(0.0, SoilTileSize), uniform(0.0, SoilTileSize));
-        const double rx = uniform(18.0, 95.0);
-        const double ry = rx * uniform(0.45, 0.8);
-        painter.setBrush(mottles[static_cast<size_t>(i) % mottles.size()]);
-        wrapped(center, [&](const QPointF &c) { painter.drawEllipse(c, rx, ry); });
-    }
-
-    for (int i = 0; i < 2600; ++i) {
-        const QPointF center(uniform(0.0, SoilTileSize), uniform(0.0, SoilTileSize));
-        const double radius = uniform(0.9, 2.3);
-        painter.setBrush(i % 3 == 0 ? QColor(184, 128, 74, 110) : QColor(92, 54, 26, 130));
-        wrapped(center, [&](const QPointF &c) { painter.drawEllipse(c, radius, radius); });
-    }
-
-    for (int i = 0; i < 170; ++i) {
-        const QPointF center(uniform(0.0, SoilTileSize), uniform(0.0, SoilTileSize));
-        const double radius = uniform(3.5, 9.0);
-        const quint32 seed = static_cast<quint32>(rng());
-        wrapped(center, [&](const QPointF &c) { drawRock(painter, c, radius, seed); });
-    }
-
-    QVector<QPointF> placed;
-    QVector<double> radii;
-    for (int attempt = 0; attempt < 600 && placed.size() < 34; ++attempt) {
-        const QPointF center(uniform(0.0, SoilTileSize), uniform(0.0, SoilTileSize));
-        const double radius = uniform(16.0, 46.0);
-        bool overlaps = false;
-        for (int j = 0; j < placed.size() && !overlaps; ++j) {
-            QPointF delta = center - placed.at(j);
-            delta.rx() = std::remainder(delta.x(), double(SoilTileSize));
-            delta.ry() = std::remainder(delta.y(), double(SoilTileSize));
-            overlaps = std::hypot(delta.x(), delta.y()) < radius + radii.at(j) + 26.0;
-        }
-        if (overlaps)
-            continue;
-        placed << center;
-        radii << radius;
-        const quint32 seed = static_cast<quint32>(rng());
-        wrapped(center, [&](const QPointF &c) { drawRock(painter, c, radius, seed); });
-    }
-
-    painter.end();
-    m_soilTexture = QPixmap::fromImage(tile);
-}
-
 void GameWidget::drawTerrain(QPainter &painter) const
 {
-    const double viewLeft = m_cameraX - 60.0;
-    const double viewRight = m_cameraX + DesignWidth + 60.0;
+    // Pixel-art ground. Each column of art pixels is coloured by its depth below
+    // the surface: dark outline, highlight, grass band with a ragged bottom edge,
+    // then speckled soil with pebbles and rock clusters. The buffer is drawn
+    // scaled up without smoothing; snapping it to the world grid keeps pixels
+    // from shimmering while the camera moves smoothly.
+    constexpr int Px = TerrainPixel;
+    const double snappedX = std::floor(m_cameraX / Px) * Px;
+    const double snappedY = std::floor(m_cameraY / Px) * Px;
+    const int columns = DesignWidth / Px + 2;
+    const int rows = DesignHeight / Px + 3;
+    const qint64 firstColumn = static_cast<qint64>(snappedX / Px);
 
-    // Split the visible range into solid stretches separated by chasms.
-    double cursor = viewLeft;
-    for (const TerrainGap &gap : m_gaps) {
-        if (gap.end <= viewLeft)
+    const QRgb outline = qRgb(31, 58, 20);
+    const QRgb highlight = qRgb(178, 226, 60);
+    const QRgb grass = qRgb(122, 194, 33);
+    const QRgb grassSpeck = qRgb(96, 165, 27);
+    const QRgb grassShade = qRgb(84, 150, 26);
+    const QRgb grassEdge = qRgb(46, 98, 22);
+    const QRgb soil = qRgb(156, 90, 38);
+    const QRgb soilDark = qRgb(132, 74, 30);
+    const QRgb soilLight = qRgb(172, 104, 48);
+
+    // Buffer row 0 starts one art pixel above the screen, so the sub-pixel
+    // offset applied when drawing never leaves an uncovered strip.
+    constexpr int NoGround = std::numeric_limits<int>::max();
+    QVarLengthArray<int, 520> tops(columns + 2);
+    QVarLengthArray<double, 520> slopes(columns + 2);
+    for (int c = -1; c <= columns; ++c) {
+        const double x = (firstColumn + c + 0.5) * Px;
+        if (gapAt(x)) {
+            tops[c + 1] = NoGround;
+            slopes[c + 1] = 0.0;
             continue;
-        if (gap.start >= viewRight)
-            break;
-        if (gap.start > cursor)
-            drawTerrainSection(painter, cursor, gap.start, cursor > viewLeft, true);
-        cursor = std::max(cursor, gap.end);
-    }
-    if (cursor < viewRight)
-        drawTerrainSection(painter, cursor, viewRight, cursor > viewLeft, false);
-}
-
-void GameWidget::drawTerrainSection(QPainter &painter, double start, double end,
-                                    bool leftCliff, bool rightCliff) const
-{
-    // Sample exactly on the course vertices so the drawn ground is the
-    // collision ground and the outline does not shimmer as it scrolls.
-    const double Step = m_chains.isEmpty() ? 20.0 : m_chains.constFirst().step;
-    QVector<double> xs{start};
-    for (double x = std::floor(start / Step) * Step + Step; x < end; x += Step)
-        xs << x;
-    xs << end;
-
-    QVector<QPointF> surface;
-    QVector<QPointF> downNormals;
-    surface.reserve(xs.size());
-    downNormals.reserve(xs.size());
-    double highestY = DesignHeight;
-    for (const double x : xs) {
-        const QPointF point = worldToScreen(QPointF(x, surfaceHeight(x)));
-        const double slope = surfaceSlope(x);
-        const double length = std::sqrt(1.0 + slope * slope);
-        surface << point;
-        downNormals << QPointF(slope / length, 1.0 / length);
-        highestY = std::min(highestY, point.y());
+        }
+        const double screenY = DesignHeight - (surfaceHeight(x) - snappedY);
+        tops[c + 1] = static_cast<int>(std::floor(screenY / Px)) + 1;
+        slopes[c + 1] = surfaceSlope(x);
     }
 
-    const double bottom = DesignHeight + 40.0;
-    QVector<QPointF> leftWall;
-    QVector<QPointF> rightWall;
-    if (leftCliff)
-        leftWall = cliffWall(surface.constFirst(), bottom, 1, hashValue(qRound64(start)));
-    if (rightCliff)
-        rightWall = cliffWall(surface.constLast(), bottom, -1, hashValue(qRound64(end) + 7));
+    QImage image(columns, rows, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    for (int c = 0; c < columns; ++c) {
+        const int top = tops[c + 1];
+        if (top == NoGround || top >= rows)
+            continue;
+        const qint64 worldColumn = firstColumn + c;
+        const int left = tops[c];
+        const int right = tops[c + 2];
+        const bool cliff = left == NoGround || right == NoGround;
 
-    QPainterPath ground;
-    if (leftCliff) {
-        ground.moveTo(leftWall.constLast());
-        for (int i = static_cast<int>(leftWall.size()) - 2; i >= 0; --i)
-            ground.lineTo(leftWall.at(i));
-    } else {
-        ground.moveTo(surface.constFirst().x(), bottom);
-        ground.lineTo(surface.constFirst());
+        // On steep ground the column's side is exposed; outline it down to the
+        // lower neighbour so slopes get a continuous dark edge.
+        int outlineBottom = top;
+        if (left != NoGround)
+            outlineBottom = std::max(outlineBottom, left - 1);
+        if (right != NoGround)
+            outlineBottom = std::max(outlineBottom, right - 1);
+        const double slope = slopes[c + 1];
+        // Thick turf whose underside forms ragged teeth, as in the art.
+        const int grassDepth = static_cast<int>(std::lround(7.0 * std::sqrt(1.0 + slope * slope)))
+                               + (worldColumn % 2 == 0 ? 0 : 2)
+                               + static_cast<int>(hashValue(worldColumn * 31) % 2);
+
+        for (int r = std::max(top, 0); r < rows; ++r) {
+            const int depth = r - top;
+            QRgb colour;
+            if (cliff || r <= outlineBottom) {
+                colour = outline;
+            } else if (r == outlineBottom + 1) {
+                colour = highlight;
+            } else if (depth <= grassDepth) {
+                // Brighter upper turf, shaded lower half with blade-like streaks.
+                const bool lower = depth > (outlineBottom - top) + grassDepth / 2;
+                const quint32 n = hashValue(worldColumn * 7919 + depth * 104729) % 7;
+                colour = lower ? (n < 2 ? grass : grassShade) : (n == 0 ? grassSpeck : grass);
+            } else if (depth <= grassDepth + 1) {
+                colour = grassEdge;
+            } else {
+                const quint32 h = hashValue(worldColumn * 15485863 + depth * 2038074743LL) % 23;
+                colour = h == 0 ? soilDark : (h == 1 ? soilLight : soil);
+            }
+            reinterpret_cast<QRgb *>(image.scanLine(r))[c] = colour;
+        }
     }
-    for (const QPointF &point : surface)
-        ground.lineTo(point);
-    if (rightCliff) {
-        for (const QPointF &point : rightWall)
-            ground.lineTo(point);
-    } else {
-        ground.lineTo(surface.constLast().x(), bottom);
+
+    // Pebbles and rock clusters, placed per world column at a fixed depth below
+    // the surface, only where the soil around them is deep enough.
+    QPainter art(&image);
+    art.setRenderHint(QPainter::Antialiasing, false);
+    for (int c = 2; c < columns - 2; ++c) {
+        const qint64 worldColumn = firstColumn + c;
+        const quint32 h = hashValue(worldColumn * 2654435761LL);
+        const bool cluster = h % 41 == 0;
+        const bool pebble = !cluster && h % 13 == 0;
+        if (!cluster && !pebble)
+            continue;
+
+        int shallowest = std::numeric_limits<int>::min();
+        bool solid = true;
+        for (int k = -2; k <= 2; ++k) {
+            const int t = tops[c + 1 + k];
+            solid = solid && t != NoGround;
+            shallowest = std::max(shallowest, t);
+        }
+        if (!solid)
+            continue;
+        const int depth = 12 + static_cast<int>((h >> 8) % 26);
+        const int y = tops[c + 1] + depth;
+        if (y - 4 < shallowest + 12 || y + 4 >= rows)
+            continue;
+
+        if (pebble) {
+            // Rounded dark stone with a lighter top-left pixel.
+            art.fillRect(c, y, 3, 2, QColor(66, 62, 70));
+            art.fillRect(c + 1, y - 1, 1, 1, QColor(66, 62, 70));
+            art.fillRect(c, y - 1 + 1, 1, 1, QColor(128, 122, 130));
+        } else {
+            // Three overlapping stones, outlined, with a light top pixel each.
+            const QPoint centres[] = {{c, y}, {c + 5, y + 1}, {c + 2, y - 3}};
+            art.setPen(QColor(110, 60, 24));
+            art.setBrush(QColor(222, 158, 96));
+            for (const QPoint &centre : centres)
+                art.drawEllipse(centre, 3, 3);
+            art.setPen(Qt::NoPen);
+            art.setBrush(QColor(246, 204, 150));
+            for (const QPoint &centre : centres)
+                art.drawRect(centre.x() - 1, centre.y() - 2, 1, 1);
+        }
     }
-    ground.closeSubpath();
-
-    // Soil texture is anchored to the world so it travels with the hills.
-    QBrush soil(m_soilTexture);
-    soil.setTransform(QTransform::fromTranslate(-std::fmod(m_cameraX, double(SoilTileSize)),
-                                                std::fmod(m_cameraY, double(SoilTileSize))));
-    painter.fillPath(ground, soil);
-
-    QPainterPath surfaceLine;
-    surfaceLine.moveTo(surface.constFirst());
-    for (int i = 1; i < surface.size(); ++i)
-        surfaceLine.lineTo(surface.at(i));
+    art.end();
 
     painter.save();
-    painter.setClipPath(ground);
-    // Darker topsoil under the turf, then a general darkening with depth.
-    painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(QColor(90, 50, 22, 55), 150.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawPath(surfaceLine);
-    painter.setPen(QPen(QColor(84, 46, 20, 80), 76.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawPath(surfaceLine);
-
-    QLinearGradient depthShade(0.0, highestY + 140.0, 0.0, DesignHeight);
-    depthShade.setColorAt(0.0, QColor(40, 20, 8, 0));
-    depthShade.setColorAt(1.0, QColor(40, 20, 8, 120));
-    painter.fillRect(QRectF(surface.constFirst().x() - 200.0, highestY,
-                            surface.constLast().x() - surface.constFirst().x() + 400.0,
-                            DesignHeight - highestY + 50.0),
-                     depthShade);
-
-    // Shadowed rims along cliff faces.
-    for (const QVector<QPointF> *wall : {&leftWall, &rightWall}) {
-        if (wall->isEmpty())
-            continue;
-        QPainterPath face;
-        face.moveTo(wall->constFirst());
-        for (int i = 1; i < wall->size(); ++i)
-            face.lineTo(wall->at(i));
-        painter.setPen(QPen(QColor(48, 26, 10, 110), 46.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.drawPath(face);
-    }
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    painter.drawImage(QRectF(snappedX - m_cameraX, (m_cameraY - snappedY) - Px,
+                             columns * Px, rows * Px),
+                      image);
     painter.restore();
-
-    // Boulders jutting out of the cliff faces, then a crisp outline.
-    const auto finishWall = [&](const QVector<QPointF> &wall, int inward, quint32 seed) {
-        if (wall.isEmpty())
-            return;
-        for (int i = 2; i < wall.size(); i += 3) {
-            const double radius = 18.0 + 16.0 * hashUnit(seed + i * 31);
-            drawRock(painter, wall.at(i) + QPointF(inward * radius * 0.55, 0.0),
-                     radius, hashValue(seed + i));
-        }
-        QPainterPath face;
-        face.moveTo(wall.constFirst());
-        for (int i = 1; i < wall.size(); ++i)
-            face.lineTo(wall.at(i));
-        painter.setBrush(Qt::NoBrush);
-        painter.setPen(QPen(QColor(46, 28, 14), 4.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.drawPath(face);
-    };
-    finishWall(leftWall, 1, hashValue(qRound64(start) + 3));
-    finishWall(rightWall, -1, hashValue(qRound64(end) + 11));
-
-    // Thick turf band with a ragged underside, like a cartoon grass cap.
-    QPolygonF turf;
-    for (const QPointF &point : surface)
-        turf << point;
-    for (int i = static_cast<int>(surface.size()) - 1; i >= 0; --i) {
-        // Ragged underside: every second 4 px step along the band dips lower.
-        const qint64 cell = qRound64(xs.at(i) / 4.0);
-        const double fringe = (cell % 2 == 0 ? 0.0 : 8.0) + 4.0 * hashUnit(cell);
-        const bool edge = (leftCliff && i == 0) || (rightCliff && i == surface.size() - 1);
-        turf << surface.at(i) + downNormals.at(i) * (edge ? GrassThickness : GrassThickness + fringe);
-    }
-
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(QColor(132, 204, 36));
-    painter.drawPolygon(turf);
-
-    QPainterPath shadeLine;
-    QPainterPath highlightLine;
-    for (int i = 0; i < surface.size(); ++i) {
-        const QPointF shade = surface.at(i) + downNormals.at(i) * (GrassThickness * 0.72);
-        const QPointF highlight = surface.at(i) + downNormals.at(i) * 3.0;
-        if (i == 0) {
-            shadeLine.moveTo(shade);
-            highlightLine.moveTo(highlight);
-        } else {
-            shadeLine.lineTo(shade);
-            highlightLine.lineTo(highlight);
-        }
-    }
-    painter.setBrush(Qt::NoBrush);
-    painter.setPen(QPen(QColor(92, 162, 26), 9.0, Qt::SolidLine, Qt::FlatCap, Qt::RoundJoin));
-    painter.drawPath(shadeLine);
-    painter.setPen(QPen(QColor(192, 240, 84), 5.0, Qt::SolidLine, Qt::FlatCap, Qt::RoundJoin));
-    painter.drawPath(highlightLine);
-    painter.setPen(QPen(QColor(36, 64, 12), 3.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawPolygon(turf);
-
-    // Grass tufts and the odd pebble sitting on top of the turf.
-    constexpr double TuftCell = 130.0;
-    for (double cellX = std::floor(start / TuftCell) * TuftCell; cellX < end; cellX += TuftCell) {
-        const qint64 cell = qRound64(cellX / TuftCell);
-        const quint32 h = hashValue(cell * 977);
-        const double x = cellX + 15.0 + (h >> 8) % 100;
-        if (x < start + 30.0 || x > end - 30.0)
-            continue;
-
-        const QPointF base = worldToScreen(QPointF(x, surfaceHeight(x)));
-        if (h % 11 == 7) {
-            drawRock(painter, base + QPointF(0.0, 1.0), 8.0 + (h >> 4) % 6, h);
-            continue;
-        }
-        if (h % 5 >= 2)
-            continue;
-
-        painter.save();
-        painter.translate(base + QPointF(0.0, -1.0));
-        painter.rotate(-std::atan(surfaceSlope(x)) * 180.0 / Pi);
-        const int blades = 3 + static_cast<int>((h >> 16) % 3);
-        QPainterPath tuft;
-        for (int b = 0; b < blades; ++b) {
-            const double lean = (b - (blades - 1) * 0.5) * 4.5;
-            const double height = 11.0 + 9.0 * hashUnit(h + b);
-            tuft.moveTo(lean - 3.2, 0.0);
-            tuft.quadTo(lean * 1.2, -height * 0.55, lean * 1.9, -height);
-            tuft.quadTo(lean * 1.1 + 1.0, -height * 0.45, lean + 3.2, 0.0);
-            tuft.closeSubpath();
-        }
-        painter.setPen(QPen(QColor(36, 64, 12), 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.setBrush(QColor(120, 196, 38));
-        painter.drawPath(tuft);
-        painter.restore();
-    }
 }
 
 void GameWidget::drawFinishLine(QPainter &painter) const

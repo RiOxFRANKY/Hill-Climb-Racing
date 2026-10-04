@@ -79,7 +79,6 @@ private:
 
     void resetGame();
     void loadCourse();
-    void buildSoilTexture();
     void updatePhysics(double dt);
     void stepPhysics(double h, double throttle, bool boost);
     [[nodiscard]] bool findTerrainContact(const QPointF &center, double radius,
@@ -99,8 +98,6 @@ private:
 
     void drawBackground(QPainter &painter) const;
     void drawTerrain(QPainter &painter) const;
-    void drawTerrainSection(QPainter &painter, double start, double end,
-                            bool leftCliff, bool rightCliff) const;
     void drawFinishLine(QPainter &painter) const;
     void drawPickups(QPainter &painter) const;
     void drawCar(QPainter &painter) const;
@@ -122,7 +119,6 @@ private:
     QPixmap m_carBody;
     QPixmap m_wheelSprite;
     QPixmap m_backgroundStrip;
-    QPixmap m_soilTexture;
 
     RigidBody m_chassis;
     std::array<RigidBody, 2> m_wheels;
