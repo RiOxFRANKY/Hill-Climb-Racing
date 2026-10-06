@@ -9,25 +9,13 @@
 /Makefile
 /.qtc_clangd/
 /.qtcreator/
-*.pro.user
-*.pro.user.*
-
-# Compiled binaries / object files
-*.exe
-*.dll
-*.o
-*.obj
-*.a
-*.lib
-
-# Generated Qt files
-moc_*.cpp
-moc_*.h
-qrc_*.cpp
-ui_*.h
+/*.user
+/*.user.*
 
 # Generated screenshots and previews
 /preview*.png
+/assets/driver_driving.png
+/assets/driver_crashed.png
 
 # Platform/editor noise
 .DS_Store

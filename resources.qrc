@@ -1,18 +1,8 @@
 <RCC>
-    <qresource prefix="/">
-        <file>assets/vehicle/chassis.png</file>
-        <file>assets/vehicle/wheel.png</file>
-        <file>assets/vehicle/driver_head.png</file>
-        <file>assets/terrain/grass_top.png</file>
-        <file>assets/terrain/dirt_fill.png</file>
-        <file>assets/collectibles/coin.png</file>
-        <file>assets/collectibles/fuel_can.png</file>
-        <file>assets/ui/pedal_gas_released.png</file>
-        <file>assets/ui/pedal_gas_pressed.png</file>
-        <file>assets/ui/pedal_brake_released.png</file>
-        <file>assets/ui/pedal_brake_pressed.png</file>
-        <file>assets/ui/meter_dial.png</file>
-        <file>assets/ui/dial_needle.png</file>
-        <file>assets/backgrounds/sky_bg.png</file>
+    <qresource prefix="/assets">
+        <file alias="car_body.png">assets/car_body.png</file>
+        <file alias="wheel.png">assets/wheel.png</file>
+        <file alias="background.png">assets/background.png</file>
+        <file alias="terrain_10km.json">assets/terrain_10km.json</file>
     </qresource>
 </RCC>
