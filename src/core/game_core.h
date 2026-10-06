@@ -52,6 +52,7 @@ private:
     double m_cameraY = 0.0;
     double m_survivalTime = 0.0;
     int m_currentSection = -1;
+    double m_zoneBannerDelay = 0.5;
     double m_zoneBannerTime = 0.0;
     int m_score = 0;
     int m_coins = 0;

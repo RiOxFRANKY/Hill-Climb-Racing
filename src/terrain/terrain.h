@@ -55,7 +55,7 @@ public:
     [[nodiscard]] bool findTerrainContact(const QPointF &center, double radius,
                                           QPointF *normal, double *depth) const;
 
-    void updatePickups(const QPointF &chassisPos, double cameraX, int &coins, double &fuel, int &score);
+    void updatePickups(const QPointF &chassisPos, const QPointF &headPos, double cameraX, int &coins, double &fuel, int &score);
     void ensurePickupsAhead(double cameraX);
     void resetPickups(double spawnX);
 

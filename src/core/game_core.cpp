@@ -17,6 +17,7 @@ void GameCore::resetGame()
     m_vehicle.reset(spawnX, m_terrain.surfaceHeight(spawnX));
     m_gameOverReason.clear();
     m_currentSection = -1;
+    m_zoneBannerDelay = 0.5;
     m_zoneBannerTime = 0.0;
     m_cameraX = cameraTarget().x();
     m_cameraY = cameraTarget().y();
@@ -35,15 +36,23 @@ void GameCore::tick(double frameTime)
         updatePhysics(frameTime);
 
         double fuel = m_vehicle.fuel();
-        m_terrain.updatePickups(m_vehicle.chassis().position, m_cameraX, m_coins, fuel, m_score);
+        const QPointF headArm = Physics::rotatePoint(Physics::chassisLocal(-38.0, 80.0), m_vehicle.chassis().angle);
+        const QPointF headPos = m_vehicle.chassis().position + headArm;
+        m_terrain.updatePickups(m_vehicle.chassis().position, headPos, m_cameraX, m_coins, fuel, m_score);
         m_vehicle.setFuel(fuel);
         m_terrain.ensurePickupsAhead(m_cameraX);
         m_survivalTime += frameTime;
 
         const int section = m_terrain.sectionAt(m_vehicle.chassis().position.x());
-        if (section != m_currentSection) {
+        if (m_zoneBannerDelay > 0.0) {
+            m_zoneBannerDelay -= frameTime;
+            if (m_zoneBannerDelay <= 0.0) {
+                m_currentSection = section;
+                m_zoneBannerTime = 5.0;
+            }
+        } else if (section != m_currentSection) {
             m_currentSection = section;
-            m_zoneBannerTime = 4.0;
+            m_zoneBannerTime = 5.0;
         }
         m_zoneBannerTime = std::max(0.0, m_zoneBannerTime - frameTime);
 

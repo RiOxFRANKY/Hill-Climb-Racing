@@ -3,6 +3,28 @@
         <file alias="car_body.png">assets/car_body.png</file>
         <file alias="wheel.png">assets/wheel.png</file>
         <file alias="background.png">assets/background.png</file>
+        <file alias="bg_sky.png">assets/bg_sky.png</file>
+        <file alias="bg_mountains.png">assets/bg_mountains.png</file>
+        <file alias="bg_hills.png">assets/bg_hills.png</file>
         <file alias="terrain_10km.json">assets/terrain_10km.json</file>
+        <file alias="fonts/PressStart2P-Regular.ttf">assets/PressStart2P-Regular.ttf</file>
+        <file alias="fonts/Silkscreen-Regular.ttf">assets/Silkscreen-Regular.ttf</file>
+        <file alias="fonts/Silkscreen-Bold.ttf">assets/Silkscreen-Bold.ttf</file>
+        <file alias="ui/pedal_brake.png">assets/ui/pedal_brake.png</file>
+        <file alias="ui/pedal_brake_pressed.png">assets/ui/pedal_brake_pressed.png</file>
+        <file alias="ui/pedal_gas.png">assets/ui/pedal_gas.png</file>
+        <file alias="ui/pedal_gas_pressed.png">assets/ui/pedal_gas_pressed.png</file>
+        <file alias="ui/pedal_boost.png">assets/ui/pedal_boost.png</file>
+        <file alias="ui/pedal_boost_pressed.png">assets/ui/pedal_boost_pressed.png</file>
+        <file alias="ui/speedometer_dial.png">assets/ui/speedometer_dial.png</file>
+        <file alias="ui/speedometer_needle.png">assets/ui/speedometer_needle.png</file>
+        <file alias="ui/wooden_board.png">assets/ui/wooden_board.png</file>
+        <file alias="ui/chain_link.png">assets/ui/chain_link.png</file>
+        <file alias="ui/coin.png">assets/ui/coin.png</file>
+        <file alias="ui/coin_icon.png">assets/ui/coin_icon.png</file>
+        <file alias="ui/hud_panel.png">assets/ui/hud_panel.png</file>
+        <file alias="ui/dialog_box.png">assets/ui/dialog_box.png</file>
+        <file alias="ui/dialog_button.png">assets/ui/dialog_button.png</file>
+        <file alias="ui/dialog_button_pressed.png">assets/ui/dialog_button_pressed.png</file>
     </qresource>
 </RCC>

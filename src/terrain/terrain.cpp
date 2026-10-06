@@ -230,14 +230,16 @@ bool TerrainManager::findTerrainContact(const QPointF &center, double radius,
     return true;
 }
 
-void TerrainManager::updatePickups(const QPointF &chassisPos, double cameraX, int &coins, double &fuel, int &score)
+void TerrainManager::updatePickups(const QPointF &chassisPos, const QPointF &headPos, double cameraX, int &coins, double &fuel, int &score)
 {
     for (Pickup &pickup : m_pickups) {
         if (pickup.collected)
             continue;
 
-        const QPointF delta = pickup.position - chassisPos;
-        if (QPointF::dotProduct(delta, delta) < 78.0 * 78.0) {
+        const QPointF deltaChassis = pickup.position - chassisPos;
+        const QPointF deltaHead = pickup.position - headPos;
+        if (QPointF::dotProduct(deltaChassis, deltaChassis) < 86.0 * 86.0
+            || QPointF::dotProduct(deltaHead, deltaHead) < 64.0 * 64.0) {
             pickup.collected = true;
             if (pickup.type == Pickup::Type::Coin) {
                 ++coins;
@@ -276,16 +278,16 @@ void TerrainManager::ensurePickupsAhead(double cameraX)
             m_nextFuelX += FuelSpacing;
             m_pickups.push_back({Pickup::Type::Fuel,
                                  QPointF(m_nextPickupX,
-                                         surfaceHeight(m_nextPickupX) + 104.0),
+                                         surfaceHeight(m_nextPickupX) + 65.0),
                                  false});
             m_nextPickupX += 430.0;
         } else {
             const int count = 3 + (group % 3);
             for (int i = 0; i < count; ++i) {
                 const double x = m_nextPickupX + i * 55.0;
-                const double arc = std::sin((i + 1.0) / (count + 1.0) * Physics::Pi) * 48.0;
+                const double arc = std::sin((i + 1.0) / (count + 1.0) * Physics::Pi) * 32.0;
                 m_pickups.push_back({Pickup::Type::Coin,
-                                     QPointF(x, surfaceHeight(x) + 112.0 + arc),
+                                     QPointF(x, surfaceHeight(x) + 68.0 + arc),
                                      false});
             }
             m_nextPickupX += count * 55.0 + 285.0;

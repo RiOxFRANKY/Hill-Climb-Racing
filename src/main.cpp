@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(screenshotOption)) {
         const QString filePath = QDir::current().absoluteFilePath(parser.value(screenshotOption));
-        QTimer::singleShot(250, &game, [&app, &game, filePath] {
+        QTimer::singleShot(1200, &game, [&app, &game, filePath] {
             const bool saved = game.grab().save(filePath);
             app.exit(saved ? 0 : 2);
         });

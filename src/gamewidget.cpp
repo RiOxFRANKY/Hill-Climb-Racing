@@ -54,7 +54,10 @@ void GameWidget::paintEvent(QPaintEvent *)
     m_renderer.drawFinishLine(painter, m_gameCore.terrain(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
     m_renderer.drawPickups(painter, m_gameCore.terrain(), m_gameCore.survivalTime(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
     m_renderer.drawCar(painter, m_gameCore.vehicle(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignHeight);
+    m_renderer.drawPedals(painter, m_gameCore);
+    m_renderer.drawSpeedometer(painter, m_gameCore);
     m_renderer.drawHud(painter, m_gameCore, DesignWidth, DesignHeight);
+    m_renderer.drawHangingBanner(painter, m_gameCore, DesignWidth);
     m_renderer.drawOverlay(painter, m_gameCore, rect());
 }
 
