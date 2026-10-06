@@ -14,8 +14,20 @@ qt_add_executable(HillClimbQt WIN32
     src/main.cpp
     src/gamewidget.cpp
     src/gamewidget.h
+    src/physics/physics.cpp
+    src/physics/physics.h
+    src/terrain/terrain.cpp
+    src/terrain/terrain.h
+    src/vehicle/vehicle.cpp
+    src/vehicle/vehicle.h
+    src/core/game_core.cpp
+    src/core/game_core.h
+    src/render/game_renderer.cpp
+    src/render/game_renderer.h
     resources.qrc
 )
+
+target_include_directories(HillClimbQt PRIVATE src)
 
 target_link_libraries(HillClimbQt PRIVATE Qt6::Widgets)
 
