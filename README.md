@@ -1,8 +1,19 @@
 # Hill Climb Racing
 
-A small, asset-free hill-climb driving prototype written in C++17 and Qt 6 Widgets.
-The game uses a fixed **1920 x 1080** render resolution, including on Windows
-desktops that use display scaling.
+A hill-climb driving game written in C++17 and Qt 6 Widgets. The game uses a
+fixed **1920 x 1080** render resolution, including on Windows desktops that use
+display scaling.
+
+## Course
+
+The track is the 10 km "Grassland Gauntlet" from `data/terrain_10km.npz`
+(10 ground chains, 9 ravines, 10 sections, 80 px per metre; see
+`data/terrain_numpy_implementation.md`). The game embeds it as
+`assets/terrain_10km.json`. After replacing the NPZ, regenerate the JSON with:
+
+```powershell
+python tools/export_terrain.py
+```
 
 ## Controls
 
@@ -13,7 +24,8 @@ desktops that use display scaling.
 - `R`: restart
 - `Esc`: quit
 
-Collect coins for points and red fuel cans to refill the tank.
+Collect coins for points and red fuel cans to refill the tank. Reach the
+finish line at 10,000 m.
 
 ## Build on this machine
 

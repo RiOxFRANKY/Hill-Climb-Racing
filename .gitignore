@@ -14,6 +14,8 @@
 
 # Generated screenshots and previews
 /preview*.png
+/assets/driver_driving.png
+/assets/driver_crashed.png
 
 # Platform/editor noise
 .DS_Store
