@@ -434,10 +434,11 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
     // Top hotkey navigation bar in retro UI font
     painter.setFont(uiFont(11, true));
     painter.setPen(QColor(8, 12, 16, 240));
-    painter.drawText(QRectF(762.0, 32.0, 400.0, 40.0), Qt::AlignCenter,
+    // Wide enough that the pixel font never gets clipped at either end.
+    painter.drawText(QRectF(562.0, 32.0, 800.0, 40.0), Qt::AlignCenter,
                      QStringLiteral("P  PAUSE   •   R  RESTART   •   ESC  QUIT"));
     painter.setPen(QColor(240, 245, 255, 220));
-    painter.drawText(QRectF(760.0, 30.0, 400.0, 40.0), Qt::AlignCenter,
+    painter.drawText(QRectF(560.0, 30.0, 800.0, 40.0), Qt::AlignCenter,
                      QStringLiteral("P  PAUSE   •   R  RESTART   •   ESC  QUIT"));
 
     // Persistent Stage text
