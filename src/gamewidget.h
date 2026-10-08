@@ -32,6 +32,7 @@ private:
     static constexpr int DesignHeight = 1080;
 
     void resetGame();
+    void toggleFullScreen();
 
     QTimer m_timer;
     QElapsedTimer m_clock;

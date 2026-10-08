@@ -1,8 +1,8 @@
 # Hill Climb Racing
 
-A hill-climb driving game written in C++17 and Qt 6 Widgets. The game uses a
-fixed **1920 x 1080** render resolution, including on Windows desktops that use
-display scaling.
+A hill-climb driving game written in C++17 and Qt 6 Widgets. The game renders a
+fixed **1920 x 1080** scene and scales it to fit the window or screen, keeping
+its 16:9 shape.
 
 ## Course
 
@@ -22,7 +22,8 @@ python tools/export_terrain.py
 - `Space`: boost while driving (uses more fuel)
 - `P`: pause or resume
 - `R`: restart
-- `Esc`: quit
+- `F11` or `Alt+Enter`: toggle fullscreen
+- `Esc`: leave fullscreen, or quit when windowed
 
 Collect coins for points and red fuel cans to refill the tank. Reach the
 finish line at 10,000 m.

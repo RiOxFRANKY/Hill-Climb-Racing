@@ -6,11 +6,16 @@
 #include <QPaintEvent>
 #include <QPainter>
 
+#include <algorithm>
+
 GameWidget::GameWidget(QWidget *parent)
     : QWidget(parent)
 {
     setWindowTitle(QStringLiteral("Hill Climb Qt — Basic Edition"));
-    setFixedSize(DesignWidth, DesignHeight);
+    // The scene is always rendered at 1920x1080 and scaled to fit the window,
+    // so the window can be resized or made fullscreen.
+    resize(DesignWidth, DesignHeight);
+    setMinimumSize(DesignWidth / 4, DesignHeight / 4);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_OpaquePaintEvent);
     setCursor(Qt::BlankCursor);
@@ -49,6 +54,15 @@ void GameWidget::paintEvent(QPaintEvent *)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
+    // Letterbox: scale the fixed design surface to fit the window while keeping
+    // its 16:9 shape, centred, with black bars filling any spare space.
+    painter.fillRect(rect(), Qt::black);
+    const double scale = std::min(width() / double(DesignWidth), height() / double(DesignHeight));
+    painter.translate((width() - DesignWidth * scale) * 0.5, (height() - DesignHeight * scale) * 0.5);
+    painter.scale(scale, scale);
+    const QRectF designRect(0.0, 0.0, DesignWidth, DesignHeight);
+    painter.setClipRect(designRect);
+
     m_renderer.drawBackground(painter, m_gameCore.cameraX(), DesignWidth, DesignHeight);
     m_renderer.drawTerrain(painter, m_gameCore.terrain(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
     m_renderer.drawFinishLine(painter, m_gameCore.terrain(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
@@ -58,7 +72,7 @@ void GameWidget::paintEvent(QPaintEvent *)
     m_renderer.drawSpeedometer(painter, m_gameCore);
     m_renderer.drawHud(painter, m_gameCore, DesignWidth, DesignHeight);
     m_renderer.drawHangingBanner(painter, m_gameCore, DesignWidth);
-    m_renderer.drawOverlay(painter, m_gameCore, rect());
+    m_renderer.drawOverlay(painter, m_gameCore, designRect);
 }
 
 void GameWidget::keyPressEvent(QKeyEvent *event)
@@ -68,8 +82,16 @@ void GameWidget::keyPressEvent(QKeyEvent *event)
         return;
     }
 
-    if (event->key() == Qt::Key_Escape) {
-        QApplication::quit();
+    const bool altEnter = (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+                          && (event->modifiers() & Qt::AltModifier);
+    if (event->key() == Qt::Key_F11 || altEnter) {
+        toggleFullScreen();
+    } else if (event->key() == Qt::Key_Escape) {
+        // Esc leaves fullscreen first; from a window it quits.
+        if (isFullScreen())
+            toggleFullScreen();
+        else
+            QApplication::quit();
     } else if (event->key() == Qt::Key_R) {
         resetGame();
     } else if (event->key() == Qt::Key_P) {
@@ -79,6 +101,17 @@ void GameWidget::keyPressEvent(QKeyEvent *event)
         m_gameCore.handleKeyPress(event->key());
     }
     event->accept();
+}
+
+void GameWidget::toggleFullScreen()
+{
+    if (isFullScreen())
+        showNormal();
+    else
+        showFullScreen();
+    // Keys held across the switch may never see their release event.
+    m_gameCore.clearKeys();
+    m_clock.restart();
 }
 
 void GameWidget::keyReleaseEvent(QKeyEvent *event)
