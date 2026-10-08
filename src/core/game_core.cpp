@@ -1,12 +1,22 @@
 #include "game_core.h"
+#include "../physics/physics.h"
+
 #include <QtGlobal>
 #include <cmath>
 #include <algorithm>
 
 namespace Core {
 
-void GameCore::loadCourse(const QString &resourcePath)
+void GameCore::loadCourse(const QString &resourcePath, bool isMoon)
 {
+    m_isMoon = isMoon;
+
+    if (isMoon) {
+        Physics::setPlanetGravity(9.81 / 6.0);
+    } else {
+        Physics::setPlanetGravity(9.81);
+    }
+    
     m_terrain.loadCourse(resourcePath);
 }
 

@@ -89,24 +89,40 @@ QPointF GameRenderer::worldToScreen(const QPointF &world, double cameraX, double
             designHeight - (world.y() - cameraY)};
 }
 
-void GameRenderer::drawBackground(QPainter &painter, double cameraX, int designWidth, int designHeight) const
+void GameRenderer::drawBackground(QPainter &painter, const Core::GameCore &core, double cameraX, int designWidth, int designHeight) const
 {
+    // Check if we are currently on the Moon level
+    if (core.isMoonLevel()) {
+        // Deep space black-to-dark-purple gradient background
+        QLinearGradient spaceSky(0.0, 0.0, 0.0, designHeight);
+        spaceSky.setColorAt(0.0, QColor(5, 5, 12));
+        spaceSky.setColorAt(0.7, QColor(20, 20, 35));
+        spaceSky.setColorAt(1.0, QColor(45, 45, 65));
+        painter.fillRect(0, 0, designWidth, designHeight, spaceSky);
+
+        // Parallax Crater Horizon Layer (Slower movement)
+        const double craterShift = std::fmod(cameraX * 0.02, designWidth);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(30, 30, 45));
+        // Draw distant lunar hills/craters procedurally
+        painter.drawRect(QRectF(-craterShift, designHeight - 250, designWidth * 2, 250));
+        return;
+    }
+
+    // Standard Earth Background Rendering
     if (!m_bgSky.isNull() && !m_bgMountains.isNull() && !m_bgHills.isNull()) {
         const double stripW = m_bgSky.width();
 
-        // 1. Sky & Clouds Layer (constant / very gentle drift)
         const double skyShift = std::fmod(cameraX * 0.012, stripW);
         painter.drawPixmap(QPointF(-skyShift, 0.0), m_bgSky);
         if (stripW - skyShift < designWidth)
             painter.drawPixmap(QPointF(stripW - skyShift, 0.0), m_bgSky);
 
-        // 2. Distant Mountains Layer (slower parallax)
         const double mtnShift = std::fmod(cameraX * 0.038, stripW);
         painter.drawPixmap(QPointF(-mtnShift, 0.0), m_bgMountains);
         if (stripW - mtnShift < designWidth)
             painter.drawPixmap(QPointF(stripW - mtnShift, 0.0), m_bgMountains);
 
-        // 3. Closer Green Hills Layer (faster parallax, foreground depth)
         const double hillsShift = std::fmod(cameraX * 0.095, stripW);
         painter.drawPixmap(QPointF(-hillsShift, 0.0), m_bgHills);
         if (stripW - hillsShift < designWidth)
@@ -182,8 +198,8 @@ void GameRenderer::drawTerrain(QPainter &painter, const Terrain::TerrainManager 
             outlineBottom = std::max(outlineBottom, right - 1);
         const double slope = slopes[c + 1];
         const int grassDepth = static_cast<int>(std::lround(7.0 * std::sqrt(1.0 + slope * slope)))
-                               + (worldColumn % 2 == 0 ? 0 : 2)
-                               + static_cast<int>(hashValue(worldColumn * 31) % 2);
+                             + (worldColumn % 2 == 0 ? 0 : 2)
+                             + static_cast<int>(hashValue(worldColumn * 31) % 2);
 
         for (int r = std::max(top, 0); r < rows; ++r) {
             const int depth = r - top;
@@ -251,7 +267,7 @@ void GameRenderer::drawTerrain(QPainter &painter, const Terrain::TerrainManager 
     painter.save();
     painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     painter.drawImage(QRectF(snappedX - cameraX, (cameraY - snappedY) - Px,
-                             columns * Px, rows * Px),
+                            columns * Px, rows * Px),
                       image);
     painter.restore();
 }
@@ -275,7 +291,7 @@ void GameRenderer::drawFinishLine(QPainter &painter, const Terrain::TerrainManag
         for (int column = 0; column < static_cast<int>(Width / Cell); ++column) {
             painter.setBrush((row + column) % 2 == 0 ? QColor(20, 20, 20) : QColor(245, 245, 245));
             painter.drawRect(QRectF(base.x() - Width * 0.5 + column * Cell,
-                                    base.y() - Height + row * Cell, Cell, Cell));
+                                   base.y() - Height + row * Cell, Cell, Cell));
         }
     }
     painter.setPen(QColor(255, 206, 60));
@@ -360,13 +376,11 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
 {
     painter.save();
 
-    // 1. Pixel Art Dashboard Panel Frame
     const QRectF panelRect(42.0, 36.0, 520.0, 164.0);
     if (!m_hudPanel.isNull()) {
         painter.drawPixmap(panelRect, m_hudPanel, m_hudPanel.rect());
     }
 
-    // Helper for drop-shadowed pixel text
     const auto drawPixelTextWithShadow = [&](const QPointF &pt, const QString &text, const QColor &fg, const QFont &font) {
         painter.setFont(font);
         painter.setPen(QColor(8, 12, 16, 240));
@@ -375,7 +389,6 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
         painter.drawText(pt, text);
     };
 
-    // Labels in authentic clean retro UI font
     const QFont labelFont = uiFont(11, true);
     const QFont numFont = pixelFont(16, true);
 
@@ -383,7 +396,6 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
     drawPixelTextWithShadow(QPointF(290.0, 72.0), QStringLiteral("COINS"), QColor(175, 195, 215), labelFont);
     drawPixelTextWithShadow(QPointF(428.0, 72.0), QStringLiteral("SCORE"), QColor(175, 195, 215), labelFont);
 
-    // Values in authentic pixel font
     const int distance = static_cast<int>(std::max(0.0, core.vehicle().chassis().position.x()) / core.terrain().pixelsPerMetre());
     drawPixelTextWithShadow(QPointF(64.0, 116.0), QStringLiteral("%1 m").arg(distance), Qt::white, numFont);
 
@@ -393,7 +405,6 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
     drawPixelTextWithShadow(QPointF(314.0, 116.0), QString::number(core.coins()), QColor(255, 215, 45), numFont);
     drawPixelTextWithShadow(QPointF(428.0, 116.0), QString::number(core.score()), Qt::white, numFont);
 
-    // Fuel Meter with Retro Pixel Segments
     drawPixelTextWithShadow(QPointF(64.0, 166.0), QStringLiteral("FUEL"), QColor(175, 195, 215), labelFont);
 
     const double fuel = core.vehicle().fuel();
@@ -431,7 +442,6 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
         }
     }
 
-    // Top hotkey navigation bar in retro UI font
     painter.setFont(uiFont(11, true));
     painter.setPen(QColor(8, 12, 16, 240));
     painter.drawText(QRectF(762.0, 32.0, 400.0, 40.0), Qt::AlignCenter,
@@ -440,7 +450,6 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
     painter.drawText(QRectF(760.0, 30.0, 400.0, 40.0), Qt::AlignCenter,
                      QStringLiteral("P  PAUSE   •   R  RESTART   •   ESC  QUIT"));
 
-    // Persistent Stage text
     const auto &sections = core.terrain().sections();
     if (!sections.isEmpty()) {
         const Terrain::CourseSection &section = sections.at(core.terrain().sectionAt(core.vehicle().chassis().position.x()));
@@ -481,13 +490,9 @@ void GameRenderer::drawHangingBanner(QPainter &painter, const Core::GameCore &co
                               .arg(section.start / core.terrain().pixelsPerMetre() / 1000.0)
                               .arg(section.end / core.terrain().pixelsPerMetre() / 1000.0);
 
-    // Animation: 5.0 seconds total
-    // Phase 1 (0.0 to 1.4s): drop from ceiling with spring bounce and sway
-    // Phase 2 (1.4 to 4.2s): steady readable state with gentle ambient sway
-    // Phase 3 (4.2 to 5.0s): smoothly pull back up out of screen
     const double elapsed = 5.0 - timer;
-    constexpr double targetCenterY = 112.0; // 18px lower, giving longer visible chains
-    constexpr double startCenterY = -180.0; // completely offscreen above ceiling
+    constexpr double targetCenterY = 112.0;
+    constexpr double startCenterY = -180.0;
     constexpr double boardW = 720.0;
     constexpr double boardH = 124.0;
     const double centerX = designWidth * 0.5;
@@ -516,7 +521,6 @@ void GameRenderer::drawHangingBanner(QPainter &painter, const Core::GameCore &co
 
     painter.save();
 
-    // 1. Draw Two Black Chains from the screen ceiling down to the board eyelets
     const double rad = swingDeg * Pi / 180.0;
     const double eyeletRelX = 252.0;
     const double eyeletRelY = -boardH * 0.5 + 4.0;
@@ -544,7 +548,6 @@ void GameRenderer::drawHangingBanner(QPainter &painter, const Core::GameCore &co
     drawChain(leftEyelet);
     drawChain(rightEyelet);
 
-    // 2. Draw Hanging Wooden Board rotated by swing angle
     painter.translate(centerX, currentCenterY);
     painter.rotate(swingDeg);
 
@@ -555,15 +558,12 @@ void GameRenderer::drawHangingBanner(QPainter &painter, const Core::GameCore &co
         painter.drawRect(QRectF(-boardW * 0.5, -boardH * 0.5, boardW, boardH));
     }
 
-    // 3. Text on Wooden Board (Carved/Painted look with drop shadow)
-    // Range (e.g. "0–1 KM")
     painter.setFont(uiFont(12, true));
     painter.setPen(QColor(25, 12, 6, 230));
     painter.drawText(QRectF(-boardW * 0.5, -boardH * 0.5 + 18.0, boardW, 26.0), Qt::AlignCenter, range);
     painter.setPen(QColor(245, 220, 160));
     painter.drawText(QRectF(-boardW * 0.5, -boardH * 0.5 + 16.0, boardW, 26.0), Qt::AlignCenter, range);
 
-    // Milestone Name (e.g. "TECHNICAL RIDGES")
     painter.setFont(pixelFont(17, true));
     painter.setPen(QColor(25, 12, 6, 240));
     painter.drawText(QRectF(-boardW * 0.5, -boardH * 0.5 + 48.0, boardW, 46.0), Qt::AlignCenter, section.name);
@@ -581,7 +581,6 @@ void GameRenderer::drawPedals(QPainter &painter, const Core::GameCore &core) con
     const bool rightActive = core.isKeyPressed(Qt::Key_Right) || core.isKeyPressed(Qt::Key_D);
     const bool boostActive = core.isKeyPressed(Qt::Key_Space);
 
-    // Left Pedal: Brake
     const QRectF brakeRect(48.0, 900.0, 250.0, 120.0);
     const QPixmap &brakePix = leftActive ? m_pedalBrakePressed : m_pedalBrake;
     if (!brakePix.isNull()) {
@@ -600,7 +599,6 @@ void GameRenderer::drawPedals(QPainter &painter, const Core::GameCore &core) con
     painter.setPen(leftActive ? QColor(255, 180, 170) : QColor(200, 215, 230));
     painter.drawText(QRectF(brakeRect.left(), brakeRect.top() + 70.0, brakeRect.width(), 24.0), Qt::AlignCenter, QStringLiteral("REVERSE"));
 
-    // Center Pedal: Boost
     const QRectF boostRect(817.0, 900.0, 286.0, 120.0);
     const QPixmap &boostPix = boostActive ? m_pedalBoostPressed : m_pedalBoost;
     if (!boostPix.isNull()) {
@@ -613,7 +611,6 @@ void GameRenderer::drawPedals(QPainter &painter, const Core::GameCore &core) con
     painter.setPen(boostActive ? QColor(100, 240, 255) : QColor(255, 210, 50));
     painter.drawText(QRectF(boostRect.left(), boostRect.top() + 44.0, boostRect.width(), 36.0), Qt::AlignCenter, QStringLiteral("BOOST"));
 
-    // Right Pedal: Gas
     const QRectF gasRect(1622.0, 900.0, 250.0, 120.0);
     const QPixmap &gasPix = rightActive ? m_pedalGasPressed : m_pedalGas;
     if (!gasPix.isNull()) {
@@ -629,28 +626,22 @@ void GameRenderer::drawPedals(QPainter &painter, const Core::GameCore &core) con
     painter.restore();
 }
 
-
 void GameRenderer::drawSpeedometer(QPainter &painter, const Core::GameCore &core) const
 {
     painter.save();
 
-    // Positioned in the TOP-RIGHT of the screen (fits naturally alongside the top HUD)
     const QRectF dialRect(1720.0, 36.0, 152.0, 152.0);
     if (!m_speedoDial.isNull()) {
         painter.drawPixmap(dialRect, m_speedoDial, m_speedoDial.rect());
     }
 
-    // Vehicle speed calculation
     const double speedPx = std::abs(core.vehicle().chassis().velocity.x());
     const double speedKmh = (speedPx / core.terrain().pixelsPerMetre()) * 3.6;
-
-    // Dial range: 0 to 140 km/h corresponds to -135 deg to +135 deg
     const double speedAngle = -135.0 + clampValue(speedKmh / 140.0, 0.0, 1.0) * 270.0;
 
     const double dialCenterX = dialRect.center().x();
     const double dialCenterY = dialRect.center().y();
 
-    // Rotating Needle (scaled 20x56 with pivot at 10, 44 - stays strictly inside dial!)
     if (!m_speedoNeedle.isNull()) {
         painter.save();
         painter.translate(dialCenterX, dialCenterY);
@@ -659,7 +650,6 @@ void GameRenderer::drawSpeedometer(QPainter &painter, const Core::GameCore &core
         painter.restore();
     }
 
-    // Large Digital Speed Number centered in dial bottom area (no bar, larger font)
     const int speedVal = static_cast<int>(std::round(speedKmh));
     painter.setFont(pixelFont(15, true));
     painter.setPen(QColor(8, 12, 16));
@@ -669,7 +659,6 @@ void GameRenderer::drawSpeedometer(QPainter &painter, const Core::GameCore &core
     painter.drawText(QRectF(dialRect.left(), dialRect.top() + 90.0, dialRect.width(), 28.0),
                      Qt::AlignCenter, QString::number(speedVal));
 
-    // "KM/H" unit label
     painter.setFont(uiFont(9, true));
     painter.setPen(QColor(8, 12, 16));
     painter.drawText(QRectF(dialRect.left() + 1, dialRect.top() + 120.0, dialRect.width(), 16.0),
@@ -698,7 +687,6 @@ void GameRenderer::drawOverlay(QPainter &painter, const Core::GameCore &core, co
         painter.drawRect(card);
     }
 
-    // Title
     const QString title = core.isGameOver() ? core.gameOverReason() : QStringLiteral("PAUSED");
     painter.setFont(pixelFont(24, true));
     painter.setPen(QColor(6, 8, 12));
@@ -706,7 +694,6 @@ void GameRenderer::drawOverlay(QPainter &painter, const Core::GameCore &core, co
     painter.setPen(core.isGameOver() ? QColor(255, 80, 60) : QColor(255, 220, 100));
     painter.drawText(QRectF(card.left(), card.top() + 50.0, card.width(), 80.0), Qt::AlignCenter, title);
 
-    // Stats
     const int distance = static_cast<int>(std::max(0.0, core.vehicle().chassis().position.x()) / core.terrain().pixelsPerMetre());
     const QString stats = QStringLiteral("%1 m   •   %2 coins   •   %3 points")
                               .arg(distance).arg(core.coins()).arg(core.score());
@@ -716,7 +703,6 @@ void GameRenderer::drawOverlay(QPainter &painter, const Core::GameCore &core, co
     painter.setPen(QColor(210, 225, 240));
     painter.drawText(QRectF(card.left(), card.top() + 150.0, card.width(), 55.0), Qt::AlignCenter, stats);
 
-    // Dialog Button
     const QRectF btnRect(810.0, 565.0, 300.0, 74.0);
     if (!m_dialogButton.isNull()) {
         painter.drawPixmap(btnRect, m_dialogButton, m_dialogButton.rect());

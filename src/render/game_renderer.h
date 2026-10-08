@@ -17,7 +17,8 @@ public:
 
     [[nodiscard]] QPointF worldToScreen(const QPointF &world, double cameraX, double cameraY, int designHeight) const;
 
-    void drawBackground(QPainter &painter, double cameraX, int designWidth, int designHeight) const;
+    // UPDATED: Now takes the GameCore reference so it can check core.isMoonLevel()
+    void drawBackground(QPainter &painter, const Core::GameCore &core, double cameraX, int designWidth, int designHeight) const;
     void drawTerrain(QPainter &painter, const Terrain::TerrainManager &terrain, double cameraX, double cameraY, int designWidth, int designHeight) const;
     void drawFinishLine(QPainter &painter, const Terrain::TerrainManager &terrain, double cameraX, double cameraY, int designWidth, int designHeight) const;
     void drawPickups(QPainter &painter, const Terrain::TerrainManager &terrain, double survivalTime, double cameraX, double cameraY, int designWidth, int designHeight) const;

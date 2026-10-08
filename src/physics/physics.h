@@ -22,7 +22,6 @@ constexpr double CarSourceCenterX = (RearWheelSourceX + FrontWheelSourceX) * 0.5
 
 // Vehicle physics parameters
 constexpr double PixelsPerMetre = 80.0;
-constexpr double Gravity = 9.81 * PixelsPerMetre;
 constexpr int PhysicsSubsteps = 16;
 constexpr double ChassisMass = 1.0;
 constexpr double ChassisInertia = ChassisMass * 70.0 * 70.0;
@@ -30,10 +29,20 @@ constexpr double WheelMass = 0.15;
 constexpr double WheelInertia = 0.5 * WheelMass * WheelRadius * WheelRadius;
 constexpr double CenterOfMassY = -28.0;
 constexpr double SuspensionSag = 10.0;
-constexpr double SuspensionStiffness = ChassisMass * Gravity * 0.5 / SuspensionSag;
 constexpr double SuspensionDamping = 4.5;
 constexpr double SuspensionMinExtension = -14.0;
 constexpr double SuspensionMaxExtension = 20.0;
+
+// DYNAMIC PHYSICS (Changed from constexpr to inline for C++17 runtime modification)
+inline double Gravity = 9.81 * PixelsPerMetre;
+inline double SuspensionStiffness = ChassisMass * Gravity * 0.5 / SuspensionSag;
+
+// Helper to switch gravity based on the planet/level
+inline void setPlanetGravity(double gravityMetersPerSecond) {
+    Gravity = gravityMetersPerSecond * PixelsPerMetre;
+    // Suspension must adjust to the new gravity so the car doesn't bounce violently
+    SuspensionStiffness = ChassisMass * Gravity * 0.5 / SuspensionSag;
+}
 
 constexpr double DriveTorque = 26000.0;
 constexpr double BoostDriveTorque = 34000.0;

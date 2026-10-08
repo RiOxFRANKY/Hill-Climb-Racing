@@ -6,10 +6,24 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QVarLengthArray>
+#include <QtConcurrent>
+#include <QFutureWatcher>
+#include <QDebug>
+#include <QObject>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+
+// Standalone function that reads the file on the background thread
+QJsonDocument parseTerrainJson(const QString& filePath) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "Could not open terrain file:" << filePath;
+        return QJsonDocument(); 
+    }
+    return QJsonDocument::fromJson(file.readAll());
+}
 
 namespace Terrain {
 
@@ -26,51 +40,68 @@ quint32 hashValue(qint64 value)
 
 void TerrainManager::loadCourse(const QString &resourcePath)
 {
-    QFile file(resourcePath);
-    if (!file.open(QIODevice::ReadOnly))
-        qFatal("Missing course data %s", qPrintable(resourcePath));
-    const QJsonObject course = QJsonDocument::fromJson(file.readAll()).object();
+    // 1. Create a watcher to monitor the background thread
+    QFutureWatcher<QJsonDocument>* watcher = new QFutureWatcher<QJsonDocument>();
 
-    m_pixelsPerMetre = course.value(QStringLiteral("pixels_per_metre")).toDouble(Physics::PixelsPerMetre);
-    const double scale = m_pixelsPerMetre;
-    m_spawnX = course.value(QStringLiteral("spawn_x_m")).toDouble() * scale;
-    m_finishX = course.value(QStringLiteral("finish_x_m")).toDouble() * scale;
-
-    m_chains.clear();
-    const QJsonArray polylines = course.value(QStringLiteral("polylines_m")).toArray();
-    for (const QJsonValue &polylineValue : polylines) {
-        const QJsonArray polyline = polylineValue.toArray();
-        if (polyline.size() < 2)
-            continue;
-        TerrainChain chain;
-        chain.startX = polyline.at(0).toArray().at(0).toDouble() * scale;
-        chain.step = (polyline.at(1).toArray().at(0).toDouble()
-                      - polyline.at(0).toArray().at(0).toDouble()) * scale;
-        chain.heights.reserve(polyline.size());
-        for (const QJsonValue &pointValue : polyline) {
-            const QJsonArray point = pointValue.toArray();
-            const double x = point.at(0).toDouble() * scale;
-            if (std::abs(x - (chain.startX + chain.step * chain.heights.size())) > 1e-6)
-                qFatal("Course chain is not uniformly sampled");
-            chain.heights.append(point.at(1).toDouble() * scale);
+    // 2. Extract coordinates when the thread finishes loading the JSON
+    QObject::connect(watcher, &QFutureWatcher<QJsonDocument>::finished, [this, watcher, resourcePath]() {
+        QJsonDocument loadedDoc = watcher->result();
+        
+        if (loadedDoc.isNull()) {
+            qFatal("Missing or invalid course data %s", qPrintable(resourcePath));
         }
-        m_chains.append(chain);
-    }
+        
+        const QJsonObject course = loadedDoc.object();
 
-    m_gaps.clear();
-    for (const QJsonValue &gapValue : course.value(QStringLiteral("gap_ranges_m")).toArray()) {
-        const QJsonArray gap = gapValue.toArray();
-        m_gaps.append({gap.at(0).toDouble() * scale, gap.at(1).toDouble() * scale});
-    }
+        m_pixelsPerMetre = course.value(QStringLiteral("pixels_per_metre")).toDouble(Physics::PixelsPerMetre);
+        const double scale = m_pixelsPerMetre;
+        m_spawnX = course.value(QStringLiteral("spawn_x_m")).toDouble() * scale;
+        m_finishX = course.value(QStringLiteral("finish_x_m")).toDouble() * scale;
 
-    m_sections.clear();
-    const QJsonArray bounds = course.value(QStringLiteral("section_bounds_m")).toArray();
-    const QJsonArray names = course.value(QStringLiteral("section_names")).toArray();
-    for (int i = 0; i < bounds.size(); ++i) {
-        const QJsonArray range = bounds.at(i).toArray();
-        m_sections.append({range.at(0).toDouble() * scale, range.at(1).toDouble() * scale,
-                           names.at(i).toString().toUpper()});
-    }
+        m_chains.clear();
+        const QJsonArray polylines = course.value(QStringLiteral("polylines_m")).toArray();
+        for (const QJsonValue &polylineValue : polylines) {
+            const QJsonArray polyline = polylineValue.toArray();
+            if (polyline.size() < 2)
+                continue;
+            TerrainChain chain;
+            chain.startX = polyline.at(0).toArray().at(0).toDouble() * scale;
+            chain.step = (polyline.at(1).toArray().at(0).toDouble()
+                          - polyline.at(0).toArray().at(0).toDouble()) * scale;
+            chain.heights.reserve(polyline.size());
+            for (const QJsonValue &pointValue : polyline) {
+                const QJsonArray point = pointValue.toArray();
+                const double x = point.at(0).toDouble() * scale;
+                if (std::abs(x - (chain.startX + chain.step * chain.heights.size())) > 1e-6)
+                    qFatal("Course chain is not uniformly sampled");
+                chain.heights.append(point.at(1).toDouble() * scale);
+            }
+            m_chains.append(chain);
+        }
+
+        m_gaps.clear();
+        for (const QJsonValue &gapValue : course.value(QStringLiteral("gap_ranges_m")).toArray()) {
+            const QJsonArray gap = gapValue.toArray();
+            m_gaps.append({gap.at(0).toDouble() * scale, gap.at(1).toDouble() * scale});
+        }
+
+        m_sections.clear();
+        const QJsonArray bounds = course.value(QStringLiteral("section_bounds_m")).toArray();
+        const QJsonArray names = course.value(QStringLiteral("section_names")).toArray();
+        for (int i = 0; i < bounds.size(); ++i) {
+            const QJsonArray range = bounds.at(i).toArray();
+            m_sections.append({range.at(0).toDouble() * scale, range.at(1).toDouble() * scale,
+                               names.at(i).toString().toUpper()});
+        }
+        
+        qDebug() << "Terrain successfully loaded and arrays populated in background!";
+        watcher->deleteLater(); // Clean up memory
+    });
+
+    // 3. Start the heavy parsing function on a separate thread
+    qDebug() << "Starting background JSON processing for:" << resourcePath;
+    QFuture<QJsonDocument> future = QtConcurrent::run(parseTerrainJson, resourcePath);
+    watcher->setFuture(future);
 }
 
 void TerrainManager::resetPickups(double spawnX)

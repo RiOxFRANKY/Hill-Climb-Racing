@@ -7,6 +7,7 @@
         <file alias="bg_mountains.png">assets/bg_mountains.png</file>
         <file alias="bg_hills.png">assets/bg_hills.png</file>
         <file alias="terrain_10km.json">assets/terrain_10km.json</file>
+        <file alias="moon_terrain.json">assets/moon_terrain.json</file>
         <file alias="fonts/PressStart2P-Regular.ttf">assets/PressStart2P-Regular.ttf</file>
         <file alias="fonts/Silkscreen-Regular.ttf">assets/Silkscreen-Regular.ttf</file>
         <file alias="fonts/Silkscreen-Bold.ttf">assets/Silkscreen-Bold.ttf</file>

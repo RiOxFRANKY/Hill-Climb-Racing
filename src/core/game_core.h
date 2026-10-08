@@ -12,7 +12,7 @@ class GameCore {
 public:
     GameCore() = default;
 
-    void loadCourse(const QString &resourcePath = QStringLiteral(":/assets/terrain_10km.json"));
+    void loadCourse(const QString &resourcePath = QStringLiteral(":/assets/terrain_10km.json"), bool isMoon = false);
     void resetGame();
     void tick(double frameTime);
     void updatePhysics(double dt);
@@ -42,6 +42,8 @@ public:
     [[nodiscard]] bool isFinished() const { return m_finished; }
     [[nodiscard]] const QString &gameOverReason() const { return m_gameOverReason; }
     [[nodiscard]] const QSet<int> &keys() const { return m_keys; }
+    
+    [[nodiscard]] bool isMoonLevel() const { return m_isMoon; }
 
 private:
     Terrain::TerrainManager m_terrain;
@@ -60,6 +62,7 @@ private:
     bool m_gameOver = false;
     bool m_finished = false;
     QString m_gameOverReason;
+    bool m_isMoon = false;
 };
 
 } // namespace Core

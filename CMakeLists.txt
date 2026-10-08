@@ -8,7 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+# Added Concurrent here
+find_package(Qt6 REQUIRED COMPONENTS Widgets Concurrent)
 
 qt_add_executable(HillClimbQt WIN32
     src/main.cpp
@@ -29,7 +30,8 @@ qt_add_executable(HillClimbQt WIN32
 
 target_include_directories(HillClimbQt PRIVATE src)
 
-target_link_libraries(HillClimbQt PRIVATE Qt6::Widgets)
+# Added Qt6::Concurrent here
+target_link_libraries(HillClimbQt PRIVATE Qt6::Widgets Qt6::Concurrent)
 
 if(MSVC)
     target_compile_options(HillClimbQt PRIVATE /W4 /permissive-)
