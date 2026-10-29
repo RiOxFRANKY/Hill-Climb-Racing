@@ -25,6 +25,14 @@ public:
     [[nodiscard]] bool isKeyPressed(int key) const;
     void togglePause();
 
+    // On-screen pedals, held by touch or mouse alongside the keyboard.
+    enum class Pedal { Gas, Brake, Boost };
+    void setPedal(Pedal pedal, bool down);
+
+    [[nodiscard]] bool accelerating() const;
+    [[nodiscard]] bool reversing() const;
+    [[nodiscard]] bool boosting() const;
+
     [[nodiscard]] const Terrain::TerrainManager &terrain() const { return m_terrain; }
     [[nodiscard]] Terrain::TerrainManager &terrain() { return m_terrain; }
     [[nodiscard]] const Vehicle::VehicleEntity &vehicle() const { return m_vehicle; }
@@ -47,6 +55,9 @@ private:
     Terrain::TerrainManager m_terrain;
     Vehicle::VehicleEntity m_vehicle;
     QSet<int> m_keys;
+    bool m_gasPedal = false;
+    bool m_brakePedal = false;
+    bool m_boostPedal = false;
 
     double m_cameraX = 0.0;
     double m_cameraY = 0.0;

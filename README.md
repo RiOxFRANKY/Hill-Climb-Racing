@@ -1,8 +1,12 @@
 # Hill Climb Racing
 
-A hill-climb driving game written in C++17 and Qt 6 Widgets. The game renders a
-fixed **1920 x 1080** scene and scales it to fit the window or screen, keeping
-its 16:9 shape.
+A hill-climb driving game written in C++17 and Qt Quick, for desktop and
+Android. The game lays out a fixed **1920 x 1080** scene and scales it to fit
+the window or screen, keeping its 16:9 shape.
+
+The simulation (`src/core`, `src/physics`, `src/vehicle`, `src/terrain`) is
+plain C++. `GameController` (`src/quick`) exposes it to the QML scene in
+`qml/`, and `TerrainItem` draws the pixel-art ground as a GPU texture.
 
 ## Course
 
@@ -29,24 +33,18 @@ the mouse, to pick **Play**, **Controls** or **Quit**.
 - `Esc`: leave fullscreen; otherwise return to the start menu (quits from
   the menu)
 
+On a touch screen, hold the on-screen **Brake**, **Boost** and **Gas** pedals
+(several at once is fine), and tap **P Pause**, **R Restart** or **Esc Menu**
+in the bar at the top. Android's Back button works like `Esc`.
+
 Collect coins for points and red fuel cans to refill the tank. Reach the
 finish line at 10,000 m.
 
 ## Build on this machine
 
-### Qt Creator / qmake
-
-Open `Hill-Climb-Racing.pro` in Qt Creator, select the installed Qt 6 Desktop
-kit, and press **Run**.
-
-From PowerShell, the equivalent qmake commands are:
-
-```powershell
-New-Item -ItemType Directory -Force build-qmake | Out-Null
-Set-Location build-qmake
-& "C:\Qt\6.11.1\mingw_64\bin\qmake.exe" ..\Hill-Climb-Racing.pro
-& "C:\Qt\Tools\mingw1310_64\bin\mingw32-make.exe"
-```
+The project builds with CMake and needs Qt 6.8 or newer with the Qt Quick
+module. In Qt Creator, open `CMakeLists.txt`, pick a Qt 6 Desktop kit and press
+**Run**.
 
 ### CMake
 
@@ -72,3 +70,11 @@ To capture a preview frame without playing:
 
 Add `--play` to skip the start menu, for example to capture a gameplay frame
 with `--play --screenshot preview.png`.
+
+### Android
+
+Install the Qt for Android kit with the Qt Maintenance Tool, and set up the
+Android SDK, NDK and JDK under **Edit > Preferences > Devices > Android** in
+Qt Creator. Then open `CMakeLists.txt`, choose the Android kit, and run on a
+connected device or emulator. The game runs fullscreen and locks the screen to
+landscape.

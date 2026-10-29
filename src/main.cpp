@@ -1,25 +1,25 @@
-#include "gamewidget.h"
+#include "quick/sprite_provider.h"
 
-#include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDir>
-#include <QFont>
-#include <QIcon>
-#include <QPalette>
-#include <QStyleFactory>
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQuickItem>
+#include <QQuickItemGrabResult>
+#include <QQuickWindow>
 #include <QTimer>
+
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
 
 int main(int argc, char *argv[])
 {
-    // This game intentionally uses an exact 1920x1080 render surface instead of
-    // allowing Windows display scaling to turn it into (for example) 2400x1350.
-    qputenv("QT_FONT_DPI", QByteArrayLiteral("96"));
-
-    QApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Hill Climb Qt"));
     app.setOrganizationName(QStringLiteral("HCR"));
-    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("A basic hill-climb driving game made with Qt."));
@@ -35,25 +35,48 @@ int main(int argc, char *argv[])
     parser.addOption(playOption);
     parser.process(app);
 
-    QPalette palette;
-    palette.setColor(QPalette::Window, QColor(16, 30, 48));
-    palette.setColor(QPalette::WindowText, Qt::white);
-    app.setPalette(palette);
+#ifdef Q_OS_ANDROID
+    // The game is designed for a 16:9 landscape screen.
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        constexpr jint SensorLandscape = 6; // ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity.callMethod<void>("setRequestedOrientation", "(I)V", SensorLandscape);
+    });
+#endif
 
-    QFont defaultFont(QStringLiteral("Segoe UI"));
-    defaultFont.setStyleHint(QFont::SansSerif);
-    app.setFont(defaultFont);
+    // The scene is scaled to fit the screen; curve-rendered text keeps the
+    // pixel fonts sharp at any scale.
+    QQuickWindow::setTextRenderType(QQuickWindow::CurveTextRendering);
 
-    GameWidget game;
-    if (parser.isSet(playOption))
-        game.startGame();
-    game.show();
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("sprites"), new SpriteProvider);
+    engine.setInitialProperties({{QStringLiteral("startInGame"), parser.isSet(playOption)}});
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
+                     [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+    engine.loadFromModule("HillClimb", "Main");
 
-    if (parser.isSet(screenshotOption)) {
+    QObject *root = engine.rootObjects().isEmpty() ? nullptr : engine.rootObjects().constFirst();
+    auto *stage = root ? root->findChild<QQuickItem *>(QStringLiteral("stage")) : nullptr;
+    if (stage && parser.isSet(screenshotOption)) {
+        // Grab the design surface itself so the frame is 1920x1080 whatever
+        // size the window ended up.
         const QString filePath = QDir::current().absoluteFilePath(parser.value(screenshotOption));
-        QTimer::singleShot(1200, &game, [&app, &game, filePath] {
-            const bool saved = game.grab().save(filePath);
-            app.exit(saved ? 0 : 2);
+        QTimer::singleShot(1200, stage, [&app, stage, filePath] {
+            // The grab size is in logical pixels; undo display scaling.
+            const QSize frameSize(1920, 1080);
+            const qreal dpr = stage->window()->effectiveDevicePixelRatio();
+            const QSharedPointer<QQuickItemGrabResult> grab =
+                stage->grabToImage(QSize(qRound(frameSize.width() / dpr), qRound(frameSize.height() / dpr)));
+            if (!grab) {
+                app.exit(2);
+                return;
+            }
+            QObject::connect(grab.data(), &QQuickItemGrabResult::ready, &app, [&app, grab, filePath, frameSize] {
+                QImage image = grab->image();
+                if (image.size() != frameSize)
+                    image = image.scaled(frameSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                app.exit(image.save(filePath) ? 0 : 2);
+            });
         });
     }
 
