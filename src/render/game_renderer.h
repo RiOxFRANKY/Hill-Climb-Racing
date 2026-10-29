@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/game_core.h"
+#include "../ui/start_menu.h"
 
 #include <QFont>
 #include <QPainter>
@@ -27,11 +28,15 @@ public:
     void drawOverlay(QPainter &painter, const Core::GameCore &core, const QRectF &rect) const;
     void drawPedals(QPainter &painter, const Core::GameCore &core) const;
     void drawSpeedometer(QPainter &painter, const Core::GameCore &core) const;
+    void drawStartMenu(QPainter &painter, const Ui::StartMenu &menu, const Terrain::TerrainManager &terrain, const QRectF &rect) const;
 
     [[nodiscard]] QFont pixelFont(int pointSize, bool bold = false) const;
     [[nodiscard]] QFont uiFont(int pointSize, bool bold = false) const;
 
 private:
+    void drawChain(QPainter &painter, const QPointF &target) const;
+    void drawControlsPanel(QPainter &painter, const Ui::StartMenu &menu) const;
+
     QPixmap m_carBody;
     QPixmap m_wheelSprite;
     QPixmap m_backgroundStrip;

@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QFocusEvent>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QPaintEvent>
 #include <QPainter>
 
@@ -18,7 +19,7 @@ GameWidget::GameWidget(QWidget *parent)
     setMinimumSize(DesignWidth / 4, DesignHeight / 4);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_OpaquePaintEvent);
-    setCursor(Qt::BlankCursor);
+    setMouseTracking(true);
 
     m_renderer.loadAssets();
     m_gameCore.loadCourse();
@@ -28,7 +29,7 @@ GameWidget::GameWidget(QWidget *parent)
     m_timer.start(16);
     m_clock.start();
 
-    resetGame();
+    openMenu();
 }
 
 void GameWidget::resetGame()
@@ -38,14 +39,58 @@ void GameWidget::resetGame()
     update();
 }
 
+void GameWidget::openMenu()
+{
+    // The menu sits over the idle car at the start line.
+    m_inMenu = true;
+    m_menu.reset();
+    setCursor(Qt::ArrowCursor);
+    resetGame();
+}
+
+void GameWidget::startGame()
+{
+    m_inMenu = false;
+    setCursor(Qt::BlankCursor);
+    resetGame();
+}
+
+void GameWidget::handleMenuAction(Ui::StartMenu::Action action)
+{
+    switch (action) {
+    case Ui::StartMenu::Action::Play:
+        startGame();
+        break;
+    case Ui::StartMenu::Action::Quit:
+        QApplication::quit();
+        break;
+    case Ui::StartMenu::Action::None:
+        break;
+    }
+}
+
 void GameWidget::tick()
 {
     const qint64 elapsedNs = m_clock.nsecsElapsed();
     m_clock.restart();
     const double frameTime = Physics::clampValue(elapsedNs / 1e9, 0.0, 0.034);
 
-    m_gameCore.tick(frameTime);
+    if (m_inMenu)
+        m_menu.update(frameTime);
+    else
+        m_gameCore.tick(frameTime);
     update();
+}
+
+QTransform GameWidget::designTransform() const
+{
+    // Letterbox: scale the fixed design surface to fit the window while keeping
+    // its 16:9 shape, centred, with black bars filling any spare space.
+    const double scale = std::min(width() / double(DesignWidth), height() / double(DesignHeight));
+    QTransform transform;
+    transform.translate((width() - DesignWidth * scale) * 0.5, (height() - DesignHeight * scale) * 0.5);
+    transform.scale(scale, scale);
+    return transform;
 }
 
 void GameWidget::paintEvent(QPaintEvent *)
@@ -54,20 +99,22 @@ void GameWidget::paintEvent(QPaintEvent *)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    // Letterbox: scale the fixed design surface to fit the window while keeping
-    // its 16:9 shape, centred, with black bars filling any spare space.
     painter.fillRect(rect(), Qt::black);
-    const double scale = std::min(width() / double(DesignWidth), height() / double(DesignHeight));
-    painter.translate((width() - DesignWidth * scale) * 0.5, (height() - DesignHeight * scale) * 0.5);
-    painter.scale(scale, scale);
+    painter.setTransform(designTransform());
     const QRectF designRect(0.0, 0.0, DesignWidth, DesignHeight);
     painter.setClipRect(designRect);
 
+    const double animationTime = m_inMenu ? m_menu.time() : m_gameCore.survivalTime();
     m_renderer.drawBackground(painter, m_gameCore.cameraX(), DesignWidth, DesignHeight);
     m_renderer.drawTerrain(painter, m_gameCore.terrain(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
     m_renderer.drawFinishLine(painter, m_gameCore.terrain(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
-    m_renderer.drawPickups(painter, m_gameCore.terrain(), m_gameCore.survivalTime(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
+    m_renderer.drawPickups(painter, m_gameCore.terrain(), animationTime, m_gameCore.cameraX(), m_gameCore.cameraY(), DesignWidth, DesignHeight);
     m_renderer.drawCar(painter, m_gameCore.vehicle(), m_gameCore.cameraX(), m_gameCore.cameraY(), DesignHeight);
+
+    if (m_inMenu) {
+        m_renderer.drawStartMenu(painter, m_menu, m_gameCore.terrain(), designRect);
+        return;
+    }
     m_renderer.drawPedals(painter, m_gameCore);
     m_renderer.drawSpeedometer(painter, m_gameCore);
     m_renderer.drawHud(painter, m_gameCore, DesignWidth, DesignHeight);
@@ -78,6 +125,10 @@ void GameWidget::paintEvent(QPaintEvent *)
 void GameWidget::keyPressEvent(QKeyEvent *event)
 {
     if (event->isAutoRepeat()) {
+        // Holding Up/Down in the menu keeps moving the selection.
+        if (m_inMenu && event->key() != Qt::Key_Return && event->key() != Qt::Key_Enter
+            && event->key() != Qt::Key_Space && event->key() != Qt::Key_Escape)
+            m_menu.handleKey(event->key());
         event->accept();
         return;
     }
@@ -86,12 +137,16 @@ void GameWidget::keyPressEvent(QKeyEvent *event)
                           && (event->modifiers() & Qt::AltModifier);
     if (event->key() == Qt::Key_F11 || altEnter) {
         toggleFullScreen();
-    } else if (event->key() == Qt::Key_Escape) {
-        // Esc leaves fullscreen first; from a window it quits.
-        if (isFullScreen())
-            toggleFullScreen();
-        else
+    } else if (event->key() == Qt::Key_Escape && isFullScreen() && !(m_inMenu && m_menu.showingControls())) {
+        // Esc leaves fullscreen first.
+        toggleFullScreen();
+    } else if (m_inMenu) {
+        if (event->key() == Qt::Key_Escape && !m_menu.showingControls())
             QApplication::quit();
+        else
+            handleMenuAction(m_menu.handleKey(event->key()));
+    } else if (event->key() == Qt::Key_Escape) {
+        openMenu();
     } else if (event->key() == Qt::Key_R) {
         resetGame();
     } else if (event->key() == Qt::Key_P) {
@@ -119,6 +174,27 @@ void GameWidget::keyReleaseEvent(QKeyEvent *event)
     if (!event->isAutoRepeat())
         m_gameCore.handleKeyRelease(event->key());
     event->accept();
+}
+
+void GameWidget::mouseMoveEvent(QMouseEvent *event)
+{
+    if (m_inMenu)
+        m_menu.handleHover(designTransform().inverted().map(event->position()));
+    QWidget::mouseMoveEvent(event);
+}
+
+void GameWidget::mousePressEvent(QMouseEvent *event)
+{
+    if (m_inMenu && event->button() == Qt::LeftButton)
+        m_menu.handlePress(designTransform().inverted().map(event->position()));
+    QWidget::mousePressEvent(event);
+}
+
+void GameWidget::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (m_inMenu && event->button() == Qt::LeftButton)
+        handleMenuAction(m_menu.handleRelease(designTransform().inverted().map(event->position())));
+    QWidget::mouseReleaseEvent(event);
 }
 
 void GameWidget::focusOutEvent(QFocusEvent *event)

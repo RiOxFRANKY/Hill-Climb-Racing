@@ -24,6 +24,8 @@ qt_add_executable(HillClimbQt WIN32
     src/core/game_core.h
     src/render/game_renderer.cpp
     src/render/game_renderer.h
+    src/ui/start_menu.cpp
+    src/ui/start_menu.h
     resources.qrc
 )
 

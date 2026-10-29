@@ -436,10 +436,10 @@ void GameRenderer::drawHud(QPainter &painter, const Core::GameCore &core, int, i
     painter.setPen(QColor(8, 12, 16, 240));
     // Wide enough that the pixel font never gets clipped at either end.
     painter.drawText(QRectF(562.0, 32.0, 800.0, 40.0), Qt::AlignCenter,
-                     QStringLiteral("P  PAUSE   •   R  RESTART   •   ESC  QUIT"));
+                     QStringLiteral("P  PAUSE   •   R  RESTART   •   ESC  MENU"));
     painter.setPen(QColor(240, 245, 255, 220));
     painter.drawText(QRectF(560.0, 30.0, 800.0, 40.0), Qt::AlignCenter,
-                     QStringLiteral("P  PAUSE   •   R  RESTART   •   ESC  QUIT"));
+                     QStringLiteral("P  PAUSE   •   R  RESTART   •   ESC  MENU"));
 
     // Persistent Stage text
     const auto &sections = core.terrain().sections();
@@ -527,23 +527,8 @@ void GameRenderer::drawHangingBanner(QPainter &painter, const Core::GameCore &co
     const QPointF rightEyelet(centerX + (eyeletRelX * std::cos(rad) - eyeletRelY * std::sin(rad)),
                               currentCenterY + (eyeletRelX * std::sin(rad) + eyeletRelY * std::cos(rad)));
 
-    const auto drawChain = [&](const QPointF &target) {
-        const double linkH = 26.0;
-        const double topY = -15.0;
-        const double bottomY = target.y();
-        const double linkX = target.x();
-        for (double y = topY; y < bottomY; y += linkH) {
-            if (!m_chainLink.isNull()) {
-                painter.drawPixmap(QRectF(linkX - 8.0, y, 16.0, 32.0), m_chainLink, m_chainLink.rect());
-            } else {
-                painter.setPen(QPen(QColor(20, 24, 32), 6.0));
-                painter.drawLine(QPointF(linkX, topY), target);
-            }
-        }
-    };
-
-    drawChain(leftEyelet);
-    drawChain(rightEyelet);
+    drawChain(painter, leftEyelet);
+    drawChain(painter, rightEyelet);
 
     // 2. Draw Hanging Wooden Board rotated by swing angle
     painter.translate(centerX, currentCenterY);
@@ -572,6 +557,23 @@ void GameRenderer::drawHangingBanner(QPainter &painter, const Core::GameCore &co
     painter.drawText(QRectF(-boardW * 0.5, -boardH * 0.5 + 46.0, boardW, 46.0), Qt::AlignCenter, section.name);
 
     painter.restore();
+}
+
+// Hangs a chain from just above the screen ceiling down to target.
+void GameRenderer::drawChain(QPainter &painter, const QPointF &target) const
+{
+    const double linkH = 26.0;
+    const double topY = -15.0;
+    const double bottomY = target.y();
+    const double linkX = target.x();
+    for (double y = topY; y < bottomY; y += linkH) {
+        if (!m_chainLink.isNull()) {
+            painter.drawPixmap(QRectF(linkX - 8.0, y, 16.0, 32.0), m_chainLink, m_chainLink.rect());
+        } else {
+            painter.setPen(QPen(QColor(20, 24, 32), 6.0));
+            painter.drawLine(QPointF(linkX, topY), target);
+        }
+    }
 }
 
 void GameRenderer::drawPedals(QPainter &painter, const Core::GameCore &core) const
@@ -732,7 +734,206 @@ void GameRenderer::drawOverlay(QPainter &painter, const Core::GameCore &core, co
     painter.setPen(Qt::white);
     painter.drawText(QRectF(btnRect.left(), btnRect.top() + 1.0, btnRect.width(), btnRect.height()), Qt::AlignCenter, btnText);
 
+    const QRectF menuHint(card.left(), btnRect.bottom() + 14.0, card.width(), 28.0);
+    painter.setFont(uiFont(11, true));
+    painter.setPen(QColor(6, 8, 12));
+    painter.drawText(menuHint.translated(2.0, 2.0), Qt::AlignCenter, QStringLiteral("ESC  MENU"));
+    painter.setPen(QColor(160, 185, 210));
+    painter.drawText(menuHint, Qt::AlignCenter, QStringLiteral("ESC  MENU"));
+
     painter.restore();
+}
+
+void GameRenderer::drawStartMenu(QPainter &painter, const Ui::StartMenu &menu, const Terrain::TerrainManager &terrain, const QRectF &rect) const
+{
+    painter.save();
+
+    // Shade the top and bottom of the idle scene so the title and buttons read clearly.
+    QLinearGradient shade(0.0, rect.top(), 0.0, rect.bottom());
+    shade.setColorAt(0.0, QColor(6, 10, 16, 150));
+    shade.setColorAt(0.45, QColor(6, 10, 16, 40));
+    shade.setColorAt(1.0, QColor(6, 10, 16, 120));
+    painter.fillRect(rect, shade);
+
+    if (menu.showingControls()) {
+        painter.fillRect(rect, QColor(6, 10, 16, 120));
+        drawControlsPanel(painter, menu);
+        painter.restore();
+        return;
+    }
+
+    const auto drawShadowedText = [&](const QRectF &box, const QString &text, const QFont &font,
+                                      const QColor &fg, double shadowOffset) {
+        painter.setFont(font);
+        painter.setPen(QColor(8, 12, 16, 240));
+        painter.drawText(box.translated(shadowOffset, shadowOffset), Qt::AlignCenter, text);
+        painter.setPen(fg);
+        painter.drawText(box, Qt::AlignCenter, text);
+    };
+
+    // 1. Title board: drops in on its chains like the zone banner, then sways gently.
+    const double t = menu.time();
+    constexpr double boardW = 900.0; // wooden_board.png at a uniform 1.25x
+    constexpr double boardH = 160.0;
+    constexpr double targetCenterY = 150.0;
+    constexpr double startCenterY = -200.0;
+    const double centerX = rect.center().x();
+
+    double currentCenterY = targetCenterY;
+    double swingDeg = 0.4 * std::sin(t * 2.2);
+    if (t < 1.4) {
+        const double dropT = clampValue(t / 0.6, 0.0, 1.0);
+        const double easeDrop = 1.0 - std::pow(1.0 - dropT, 3);
+        currentCenterY = startCenterY + (targetCenterY - startCenterY) * easeDrop
+                         + 26.0 * std::exp(-3.2 * t) * std::sin(t * 15.0);
+        swingDeg = 4.0 * std::exp(-2.4 * t) * std::sin(t * 9.5);
+    }
+
+    const double rad = swingDeg * Pi / 180.0;
+    const QPointF centre(centerX, currentCenterY);
+    drawChain(painter, centre + rotatePoint(QPointF(-boardW * 0.35, -boardH * 0.5 + 5.0), rad));
+    drawChain(painter, centre + rotatePoint(QPointF(boardW * 0.35, -boardH * 0.5 + 5.0), rad));
+
+    painter.save();
+    painter.translate(centre);
+    painter.rotate(swingDeg);
+    const QRectF board(-boardW * 0.5, -boardH * 0.5, boardW, boardH);
+    if (!m_woodenBoard.isNull()) {
+        painter.drawPixmap(board, m_woodenBoard, m_woodenBoard.rect());
+    } else {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(115, 68, 38));
+        painter.drawRect(board);
+    }
+    painter.setFont(pixelFont(32, true));
+    painter.setPen(QColor(25, 12, 6, 240));
+    painter.drawText(board.translated(4.0, 6.0), Qt::AlignCenter, QStringLiteral("HILL CLIMB RACING"));
+    painter.setPen(QColor(255, 210, 50));
+    painter.drawText(board.translated(0.0, 2.0), Qt::AlignCenter, QStringLiteral("HILL CLIMB RACING"));
+    painter.restore();
+
+    // 2. Course summary under the board, taken from the loaded course.
+    const QString summary = QStringLiteral("%1 KM   •   %2 STAGES   •   %3 RAVINES")
+                                .arg(terrain.finishX() / terrain.pixelsPerMetre() / 1000.0)
+                                .arg(terrain.sections().size())
+                                .arg(terrain.gaps().size());
+    drawShadowedText(QRectF(rect.left(), currentCenterY + boardH * 0.5 + 28.0, rect.width(), 40.0),
+                     summary, uiFont(16, true), Qt::white, 3.0);
+
+    // 3. Buttons. The highlighted one gets a pixel frame and arrow; the others are dimmed.
+    for (int i = 0; i < Ui::StartMenu::itemCount(); ++i) {
+        const QRectF buttonRect = Ui::StartMenu::itemRect(i);
+        const bool selected = i == menu.selected();
+        const bool pressed = i == menu.pressed();
+
+        if (selected) {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(8, 12, 16));
+            painter.drawRect(buttonRect.adjusted(-10.0, -10.0, 10.0, 10.0));
+            painter.setBrush(QColor(255, 210, 50));
+            painter.drawRect(buttonRect.adjusted(-6.0, -6.0, 6.0, 6.0));
+        }
+        const QPixmap &buttonPix = pressed ? m_dialogButtonPressed : m_dialogButton;
+        if (!buttonPix.isNull()) {
+            painter.drawPixmap(buttonRect, buttonPix, buttonPix.rect());
+        } else {
+            painter.setPen(QColor(8, 12, 16));
+            painter.setBrush(pressed ? QColor(130, 28, 24) : QColor(184, 46, 38));
+            painter.drawRect(buttonRect);
+        }
+        if (!selected)
+            painter.fillRect(buttonRect, QColor(8, 12, 16, 80));
+
+        const QRectF textRect = buttonRect.translated(0.0, pressed ? 2.0 : 0.0);
+        drawShadowedText(textRect, Ui::StartMenu::itemLabel(i), pixelFont(18, true),
+                         selected ? QColor(255, 220, 60) : QColor(225, 228, 235), 3.0);
+    }
+
+    // Pixel arrow beside the highlighted button, nudging in 4 px steps.
+    const QRectF selectedRect = Ui::StartMenu::itemRect(menu.selected());
+    const double nudge = std::floor((std::sin(t * 6.0) + 1.0) * 1.5) * 4.0;
+    const QPointF arrowTip(selectedRect.left() - 22.0 + nudge, std::round(selectedRect.center().y() / 4.0) * 4.0);
+    painter.setPen(Qt::NoPen);
+    for (int pass = 0; pass < 2; ++pass) {
+        painter.setBrush(pass == 0 ? QColor(8, 12, 16) : QColor(255, 210, 50));
+        const double grow = pass == 0 ? 4.0 : 0.0;
+        for (int column = 0; column < 6; ++column) {
+            const double halfHeight = (6 - column) * 4.0 + grow;
+            painter.drawRect(QRectF(arrowTip.x() - 24.0 + column * 4.0 - grow, arrowTip.y() - halfHeight,
+                                    4.0 + grow * 2.0, halfHeight * 2.0));
+        }
+    }
+
+    // 4. Footer hint.
+    drawShadowedText(QRectF(rect.left(), rect.bottom() - 70.0, rect.width(), 40.0),
+                     QStringLiteral("UP / DOWN  SELECT   •   ENTER  CONFIRM   •   F11  FULLSCREEN"),
+                     uiFont(12, true), QColor(240, 245, 255), 2.0);
+
+    painter.restore();
+}
+
+void GameRenderer::drawControlsPanel(QPainter &painter, const Ui::StartMenu &menu) const
+{
+    const QRectF panel = Ui::StartMenu::controlsPanelRect();
+    if (!m_dialogBox.isNull()) {
+        painter.drawPixmap(panel, m_dialogBox, m_dialogBox.rect());
+    } else {
+        painter.setPen(QColor(60, 75, 95));
+        painter.setBrush(QColor(16, 22, 32, 245));
+        painter.drawRect(panel);
+    }
+
+    painter.setFont(pixelFont(22, true));
+    painter.setPen(QColor(6, 8, 12));
+    painter.drawText(QRectF(panel.left() + 3.0, panel.top() + 39.0, panel.width(), 60.0), Qt::AlignCenter, QStringLiteral("CONTROLS"));
+    painter.setPen(QColor(255, 220, 100));
+    painter.drawText(QRectF(panel.left(), panel.top() + 36.0, panel.width(), 60.0), Qt::AlignCenter, QStringLiteral("CONTROLS"));
+
+    struct Binding {
+        const char *keys;
+        const char *action;
+    };
+    static constexpr Binding Bindings[] = {
+        {"D / RIGHT", "GAS  •  TILT FORWARD IN THE AIR"},
+        {"A / LEFT", "BRAKE  •  REVERSE  •  TILT BACK"},
+        {"SPACE", "BOOST  (BURNS MORE FUEL)"},
+        {"P", "PAUSE / RESUME"},
+        {"R", "RESTART"},
+        {"F11", "TOGGLE FULLSCREEN"},
+        {"ESC", "BACK TO THIS MENU"},
+    };
+
+    const double keyRight = panel.left() + 330.0;
+    double rowY = panel.top() + 116.0;
+    for (const Binding &binding : Bindings) {
+        painter.setFont(pixelFont(12, true));
+        painter.setPen(QColor(6, 8, 12));
+        painter.drawText(QRectF(panel.left() + 2.0, rowY + 2.0, keyRight - panel.left(), 32.0),
+                         Qt::AlignRight | Qt::AlignVCenter, QString::fromLatin1(binding.keys));
+        painter.setPen(QColor(255, 210, 50));
+        painter.drawText(QRectF(panel.left(), rowY, keyRight - panel.left(), 32.0),
+                         Qt::AlignRight | Qt::AlignVCenter, QString::fromLatin1(binding.keys));
+
+        painter.setFont(uiFont(12, true));
+        painter.setPen(QColor(6, 8, 12));
+        painter.drawText(QRectF(keyRight + 42.0, rowY + 2.0, panel.right() - keyRight - 60.0, 32.0),
+                         Qt::AlignLeft | Qt::AlignVCenter, QString::fromUtf8(binding.action));
+        painter.setPen(QColor(210, 225, 240));
+        painter.drawText(QRectF(keyRight + 40.0, rowY, panel.right() - keyRight - 60.0, 32.0),
+                         Qt::AlignLeft | Qt::AlignVCenter, QString::fromUtf8(binding.action));
+        rowY += 34.0;
+    }
+
+    const QRectF backRect = Ui::StartMenu::backButtonRect();
+    const QPixmap &backPix = menu.backPressed() ? m_dialogButtonPressed : m_dialogButton;
+    if (!backPix.isNull())
+        painter.drawPixmap(backRect, backPix, backPix.rect());
+    const QRectF textRect = backRect.translated(0.0, menu.backPressed() ? 2.0 : 0.0);
+    painter.setFont(pixelFont(16, true));
+    painter.setPen(QColor(6, 8, 12));
+    painter.drawText(textRect.translated(3.0, 3.0), Qt::AlignCenter, QStringLiteral("BACK"));
+    painter.setPen(Qt::white);
+    painter.drawText(textRect, Qt::AlignCenter, QStringLiteral("BACK"));
 }
 
 } // namespace Render

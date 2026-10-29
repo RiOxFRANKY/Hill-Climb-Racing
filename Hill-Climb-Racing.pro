@@ -13,7 +13,8 @@ SOURCES += \
     src/terrain/terrain.cpp \
     src/vehicle/vehicle.cpp \
     src/core/game_core.cpp \
-    src/render/game_renderer.cpp
+    src/render/game_renderer.cpp \
+    src/ui/start_menu.cpp
 
 HEADERS += \
     src/gamewidget.h \
@@ -21,7 +22,8 @@ HEADERS += \
     src/terrain/terrain.h \
     src/vehicle/vehicle.h \
     src/core/game_core.h \
-    src/render/game_renderer.h
+    src/render/game_renderer.h \
+    src/ui/start_menu.h
 
 RESOURCES += resources.qrc
 

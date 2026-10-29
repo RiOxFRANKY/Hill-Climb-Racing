@@ -29,6 +29,10 @@ int main(int argc, char *argv[])
         QStringLiteral("Save a 1920x1080 preview frame and exit."),
         QStringLiteral("file"));
     parser.addOption(screenshotOption);
+    QCommandLineOption playOption(
+        QStringList{QStringLiteral("p"), QStringLiteral("play")},
+        QStringLiteral("Skip the start menu and begin a race straight away."));
+    parser.addOption(playOption);
     parser.process(app);
 
     QPalette palette;
@@ -41,6 +45,8 @@ int main(int argc, char *argv[])
     app.setFont(defaultFont);
 
     GameWidget game;
+    if (parser.isSet(playOption))
+        game.startGame();
     game.show();
 
     if (parser.isSet(screenshotOption)) {

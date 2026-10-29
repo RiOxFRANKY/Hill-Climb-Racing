@@ -17,13 +17,17 @@ python tools/export_terrain.py
 
 ## Controls
 
+The game opens on a start menu. Use `Up`/`Down` (or `W`/`S`) and `Enter`, or
+the mouse, to pick **Play**, **Controls** or **Quit**.
+
 - `D` or `Right Arrow`: accelerate / rotate clockwise in the air
 - `A` or `Left Arrow`: brake, reverse / rotate counter-clockwise in the air
 - `Space`: boost while driving (uses more fuel)
 - `P`: pause or resume
 - `R`: restart
 - `F11` or `Alt+Enter`: toggle fullscreen
-- `Esc`: leave fullscreen, or quit when windowed
+- `Esc`: leave fullscreen; otherwise return to the start menu (quits from
+  the menu)
 
 Collect coins for points and red fuel cans to refill the tank. Reach the
 finish line at 10,000 m.
@@ -65,3 +69,6 @@ To capture a preview frame without playing:
 ```powershell
 .\build\HillClimbQt.exe --screenshot preview.png
 ```
+
+Add `--play` to skip the start menu, for example to capture a gameplay frame
+with `--play --screenshot preview.png`.
