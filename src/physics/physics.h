@@ -56,6 +56,25 @@ constexpr double TyreDynamicFriction = 1.5;
 constexpr double BodyStaticFriction = 0.6;
 constexpr double BodyDynamicFriction = 0.45;
 
+// How a map's ground behaves under the tyres. The default is grassland.
+struct SurfaceModel {
+    double gravityScale = 1.0;  // moon: well under 1
+    double driveScale = 1.0;    // multiplies engine torque; eased off in low gravity, where
+                                // full torque would lift the nose and flip the car
+    double tyreGrip = 1.0;      // multiplies the tyres' static and dynamic friction
+
+    // Sand: a slow tyre sinks in and drags; a fast one rides on top.
+    bool sand = false;
+    double sinkMax = 0.0;       // deepest a tyre can sink (px)
+    double sinkSpeed = 0.0;     // at or above this speed (px/s) a tyre does not sink
+    double sinkRate = 0.0;      // how fast a slow tyre sinks (px/s)
+    double riseRate = 0.0;      // how fast a fast or airborne tyre comes back up (px/s)
+    double sinkDrag = 0.0;      // drag on a fully sunk tyre, per second
+
+    // Mud: patches along the course (TerrainManager::mudAt) that drag the tyres.
+    double mudDrag = 0.0;       // per second, at full patch strength
+};
+
 // Rigid body state
 struct RigidBody {
     QPointF position;

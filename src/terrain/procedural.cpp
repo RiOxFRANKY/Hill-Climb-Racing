@@ -176,6 +176,12 @@ Settings Settings::forMap(int map, std::uint32_t seed)
         for (std::size_t i : {1u, 3u, 4u, 6u, 9u})
             settings.zones[i].bridges = 1;
     }
+
+    // Arctic Elegance is icy: the tyres grip only about as well as a 45 degree
+    // slope needs (see TerrainManager::generateCourse), so its slopes are
+    // capped lower, at about 40 degrees, to stay climbable.
+    if (map == 3)
+        settings.maxGradient = 0.84;
     return settings;
 }
 

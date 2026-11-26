@@ -278,12 +278,23 @@ TerrainRaster rasterizeTerrain(const Terrain::TerrainManager &terrain, double ca
                              + static_cast<int>(hashValue(worldColumn * 31) % 2);
         // Sandstone strata wander gently up and down across the screen.
         const int strataShift = static_cast<int>(std::lround(3.0 * std::sin(worldColumn * 0.045)));
+        // Swamp: deep mud patches (the ones that slow the car) replace the
+        // moss with a thicker layer of glossy, dark wet mud.
+        const bool mud = style == GroundStyle::Swamp && terrain.mudAt((worldColumn + 0.5) * Px) > 0.25;
+        const int mudDepth = topDepth + 3;
 
         for (int r = std::max(top, 0); r < rows; ++r) {
             const int depth = r - top;
             QRgb colour;
             if (cliff || r <= outlineBottom) {
                 colour = p.outline;
+            } else if (mud && r == outlineBottom + 1) {
+                colour = qRgb(112, 96, 70);  // wet shine along the top
+            } else if (mud && depth <= mudDepth) {
+                const quint32 n = hashValue(worldColumn * 7919 + depth * 104729) % 11;
+                colour = n == 0 ? qRgb(126, 108, 78)                       // glint
+                       : n < 3 ? qRgb(40, 30, 18)                          // darker swirl
+                       : depth > mudDepth / 2 ? qRgb(48, 36, 22) : qRgb(58, 44, 28);
             } else if (r == outlineBottom + 1) {
                 colour = p.highlight;
             } else if (depth <= topDepth) {

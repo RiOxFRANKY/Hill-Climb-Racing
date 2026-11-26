@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../physics/physics.h"
+
 #include <QPointF>
 #include <QString>
 #include <QVector>
@@ -64,6 +66,12 @@ public:
     [[nodiscard]] bool findTerrainContact(const QPointF &center, double radius,
                                           QPointF *normal, double *depth) const;
 
+    // How this map's ground behaves (sand, mud, ice, low gravity...).
+    [[nodiscard]] const Physics::SurfaceModel &surface() const { return m_surface; }
+    // How deep the mud is at x, from 0 (none) to 1 (the middle of a patch).
+    // Always 0 except on the swamp map.
+    [[nodiscard]] double mudAt(double x) const;
+
     void updatePickups(const QPointF &chassisPos, const QPointF &headPos, double cameraX, int &coins, double &fuel, int &score);
     void ensurePickupsAhead(double cameraX);
     void resetPickups(double spawnX);
@@ -94,6 +102,8 @@ private:
     double m_nextFuelX = 0.0;    // where the next fuel can goes
     qint64 m_coinGroup = 0;      // counts coin groups, to vary them
     double m_fuelBudgetScale = 1.0;  // below 1 on the hardest maps: cans come sooner
+    Physics::SurfaceModel m_surface;
+    QVector<TerrainGap> m_mudPatches;  // start and end of each mud patch, sorted
 };
 
 } // namespace Terrain

@@ -28,6 +28,7 @@ constexpr double FuelBudget = 650.0;     // flat metres between cans
 constexpr double ClimbCost = 2.0;        // extra cost per metre, per unit of uphill gradient
 constexpr double DescentSaving = 1.2;    // saving per metre, per unit of downhill gradient
 constexpr double BumpCost = 6.0;         // extra cost per metre, per unit of gradient change
+constexpr double MudCost = 1.5;          // extra cost per metre in the middle of a mud patch
 constexpr double MinCostPerMetre = 0.6;
 
 // Coin groups are worth more further along the course. roll is in [0, 1).
@@ -61,6 +62,8 @@ void TerrainManager::loadCourse(const QString &resourcePath)
         qFatal("Missing course data %s", qPrintable(resourcePath));
     const QJsonObject course = QJsonDocument::fromJson(file.readAll()).object();
     m_fuelBudgetScale = 1.0;
+    m_surface = Physics::SurfaceModel{};
+    m_mudPatches.clear();
 
     m_pixelsPerMetre = course.value(QStringLiteral("pixels_per_metre")).toDouble(Physics::PixelsPerMetre);
     const double scale = m_pixelsPerMetre;
@@ -115,6 +118,51 @@ void TerrainManager::generateCourse(quint32 seed, int map)
     // come a little sooner: 1.0, 0.99, 0.96, 0.91 and 0.84 of the budget.
     const double hardness = std::clamp(map, 0, Procedural::Settings::MapCount - 1);
     m_fuelBudgetScale = 1.0 - 0.01 * hardness * hardness;
+
+    // Each map's ground has its own feel. See Physics::SurfaceModel and
+    // VehicleEntity::stepPhysics for how these are used.
+    m_surface = Physics::SurfaceModel{};
+    m_mudPatches.clear();
+    switch (map) {
+    case 1:
+        // Sand: below 7 m/s a tyre sinks in, up to 0.22 m (just over half its
+        // radius) when stopped, and drags; at speed it rides on top.
+        m_surface.sand = true;
+        m_surface.sinkMax = 18.0;
+        m_surface.sinkSpeed = 7.0 * Physics::PixelsPerMetre;
+        m_surface.sinkRate = 30.0;
+        m_surface.riseRate = 90.0;
+        m_surface.sinkDrag = 2.2;
+        break;
+    case 2: {
+        // Mud: a quarter more grip everywhere, and deep patches every 120-260 m
+        // that drag the tyres and slow the car down.
+        m_surface.tyreGrip = 1.25;
+        m_surface.mudDrag = 2.4;
+        double x = 150.0 * Physics::PixelsPerMetre;
+        for (qint64 i = 0;; ++i) {
+            const quint32 h = hashValue(static_cast<qint64>(seed) * 7907 + i);
+            x += (120.0 + 140.0 * ((h & 0xFF) / 255.0)) * Physics::PixelsPerMetre;
+            const double length = (15.0 + 20.0 * (((h >> 8) & 0xFF) / 255.0)) * Physics::PixelsPerMetre;
+            if (x + length > course.finishX * Physics::PixelsPerMetre - 200.0 * Physics::PixelsPerMetre)
+                break;
+            m_mudPatches.append({x, x + length, false});
+            x += length;
+        }
+        break;
+    }
+    case 3:
+        // Ice: tyres grip a little over half as well as on grass.
+        m_surface.tyreGrip = 0.55;
+        break;
+    case 4:
+        // Moon: half the gravity.
+        m_surface.gravityScale = 0.5;
+        m_surface.driveScale = 0.75;
+        break;
+    default:
+        break;
+    }
 
     m_pixelsPerMetre = Physics::PixelsPerMetre;
     const double scale = m_pixelsPerMetre;
@@ -246,6 +294,24 @@ double TerrainManager::terrainHeight(double x) const
     return gapAt(x) ? GapFloor : surfaceHeight(x);
 }
 
+double TerrainManager::mudAt(double x) const
+{
+    if (m_mudPatches.isEmpty())
+        return 0.0;
+    auto it = std::upper_bound(m_mudPatches.cbegin(), m_mudPatches.cend(), x,
+                               [](double value, const TerrainGap &patch) { return value < patch.start; });
+    if (it == m_mudPatches.cbegin())
+        return 0.0;
+    --it;
+    if (x >= it->end)
+        return 0.0;
+    // Eases in and out over the first and last 3 m of the patch.
+    constexpr double Edge = 3.0 * Physics::PixelsPerMetre;
+    const double in = Physics::clampValue((x - it->start) / Edge, 0.0, 1.0);
+    const double out = Physics::clampValue((it->end - x) / Edge, 0.0, 1.0);
+    return std::min(in, out);
+}
+
 bool TerrainManager::findTerrainContact(const QPointF &center, double radius,
                                          QPointF *normal, double *depth) const
 {
@@ -361,7 +427,8 @@ double TerrainManager::nextFuelX(double from, double budget) const
         const double nextGradient = gradientAt(x + Step);
         cost += std::max(MinCostPerMetre, 1.0 + ClimbCost * std::max(0.0, gradient)
                                               - DescentSaving * std::max(0.0, -gradient)
-                                              + BumpCost * std::abs(nextGradient - gradient));
+                                              + BumpCost * std::abs(nextGradient - gradient)
+                                              + MudCost * mudAt(x));
         gradient = nextGradient;
         x += Step;
     }

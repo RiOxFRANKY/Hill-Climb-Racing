@@ -30,6 +30,8 @@ public:
     [[nodiscard]] bool bodyContact() const { return m_bodyContact; }
     [[nodiscard]] double flipTimer() const { return m_flipTimer; }
     [[nodiscard]] double fuel() const { return m_fuel; }
+    // How deep each tyre has sunk into sand, in pixels (0 off sand).
+    [[nodiscard]] const std::array<double, 2> &sink() const { return m_sink; }
 
     void setHeadHit(bool hit) { m_headHit = hit; }
     void setBodyContact(bool contact) { m_bodyContact = contact; }
@@ -45,6 +47,7 @@ private:
     bool m_bodyContact = false;
     double m_flipTimer = 0.0;
     double m_fuel = 100.0;
+    std::array<double, 2> m_sink{};
 };
 
 } // namespace Vehicle

@@ -30,6 +30,7 @@ void VehicleEntity::reset(double spawnX, double surfaceHeightAtSpawn)
     m_bodyContact = false;
     m_flipTimer = 0.0;
     m_fuel = 100.0;
+    m_sink = {0.0, 0.0};
 }
 
 void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Terrain::TerrainManager &terrain,
@@ -46,15 +47,16 @@ void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Ter
 
     RigidBody *const bodies[] = {&m_chassis, &m_wheels[0], &m_wheels[1]};
     const bool hasFuel = m_fuel > 0.0;
+    const SurfaceModel &surface = terrain.surface();
 
     // 1. Integrate external forces, engine and brakes.
     for (RigidBody *body : bodies) {
         body->previousPosition = body->position;
         body->previousAngle = body->angle;
-        body->velocity.ry() -= Gravity * h;
+        body->velocity.ry() -= Gravity * surface.gravityScale * h;
     }
 
-    const double driveTorque = boost ? BoostDriveTorque : DriveTorque;
+    const double driveTorque = (boost ? BoostDriveTorque : DriveTorque) * surface.driveScale;
     const double maxSpin = boost ? BoostWheelSpin : MaxWheelSpin;
     for (RigidBody &wheel : m_wheels) {
         const double spin = -wheel.angularVelocity;
@@ -172,9 +174,16 @@ void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Ter
         return touched;
     };
 
+    // Tyre grip depends on the map's surface (better in mud, worse on ice).
+    // A tyre sunk into sand collides with a smaller circle, so it sits lower,
+    // partly buried.
     m_wheelContacts = 0;
-    for (RigidBody &wheel : m_wheels) {
-        if (collide(wheel, wheel.position, WheelRadius, TyreStaticFriction, TyreDynamicFriction))
+    bool wheelTouching[2] = {false, false};
+    for (int i = 0; i < 2; ++i) {
+        RigidBody &wheel = m_wheels[i];
+        wheelTouching[i] = collide(wheel, wheel.position, WheelRadius - m_sink[i],
+                                   TyreStaticFriction * surface.tyreGrip, TyreDynamicFriction * surface.tyreGrip);
+        if (wheelTouching[i])
             ++m_wheelContacts;
     }
     for (const BodyCollider &collider : ChassisColliders) {
@@ -192,6 +201,49 @@ void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Ter
         body->velocity = (body->position - body->previousPosition) / h;
         body->angularVelocity = (body->angle - body->previousAngle) / h;
     }
+
+    // Sand and mud. A tyre on sand sinks towards a depth set by how slowly it
+    // is going (none at sinkSpeed or faster, sinkMax when stopped), and comes
+    // back up quickly once it speeds up or leaves the ground. A sunk tyre, or
+    // one in a mud patch, is dragged: both its travel and its spin lose a
+    // share of their speed every second.
+    for (int i = 0; i < 2; ++i) {
+        RigidBody &wheel = m_wheels[i];
+        if (surface.sand) {
+            // "On the sand" is judged with the tyre's full size plus a little,
+            // not the shrunken collision circle: a tyre that has sunk in is
+            // still on the ground, even though its smaller circle sits clear.
+            QPointF unusedNormal;
+            double unusedDepth = 0.0;
+            const bool onSand = wheelTouching[i]
+                                || terrain.findTerrainContact(wheel.position, WheelRadius + 2.0,
+                                                              &unusedNormal, &unusedDepth);
+            wheelTouching[i] = onSand;
+            const double speed = length(wheel.velocity);
+            const double target = onSand
+                ? surface.sinkMax * clampValue(1.0 - speed / surface.sinkSpeed, 0.0, 1.0)
+                : 0.0;
+            m_sink[i] = m_sink[i] < target ? std::min(target, m_sink[i] + surface.sinkRate * h)
+                                           : std::max(target, m_sink[i] - surface.riseRate * h);
+        }
+
+        double drag = 0.0;
+        if (wheelTouching[i]) {
+            if (surface.sand && surface.sinkMax > 0.0)
+                drag += surface.sinkDrag * m_sink[i] / surface.sinkMax;
+            if (surface.mudDrag > 0.0)
+                drag += surface.mudDrag * terrain.mudAt(wheel.position.x());
+        }
+        if (drag > 0.0) {
+            const double keep = std::max(0.0, 1.0 - drag * h);
+            wheel.velocity *= keep;
+            wheel.angularVelocity *= keep;
+        }
+    }
+    // A tyre sunk into sand still counts as on the ground (for air control,
+    // flipping and running out of fuel).
+    if (surface.sand)
+        m_wheelContacts = (wheelTouching[0] ? 1 : 0) + (wheelTouching[1] ? 1 : 0);
 
     // 5. Velocity-level effects
     for (int i = 0; i < 2; ++i) {

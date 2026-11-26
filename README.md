@@ -69,6 +69,21 @@ background, but each has its own ground style, drawn as pixel art by
 - Arctic Elegance: a snow cap over frozen rock, with ice crystals.
 - The Real Excursion: grey moon dust over cratered rock.
 
+Each map's ground also drives differently (`Physics::SurfaceModel`, set in
+`TerrainManager::generateCourse`):
+
+- Beachday, sand: a tyre going slower than 7 m/s sinks in, up to 0.22 m when
+  stopped, and drags. Park on a slope and pulling away takes effort. At speed
+  the tyres ride on top and nothing happens.
+- Swampy Vibe, mud: tyres grip 25% better everywhere, but deep mud patches
+  (15-35 m long, every 120-260 m, drawn as glossy dark mud) drag the tyres and
+  slow the car down. Fuel cans come sooner when there is mud between them.
+- Arctic Elegance, ice: tyres grip a little over half as well as on grass,
+  so slopes on this map are capped at about 40 degrees to stay climbable.
+- The Real Excursion, moon: half the gravity, so jumps go much higher and
+  last longer. The engine is eased to 75% so it cannot flip the car over
+  backwards, and you will need to keep the car level in the air.
+
 Each map also has its own zone names and course. On each harder map the hills get
 taller and shorter, so steeper. The bumps get bigger, and every zone tilts
 further uphill into long climbs. Set pieces get much larger, steeper and
