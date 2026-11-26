@@ -1,4 +1,5 @@
 #include "terrain.h"
+#include "procedural.h"
 #include "../physics/physics.h"
 
 #include <QFile>
@@ -71,6 +72,40 @@ void TerrainManager::loadCourse(const QString &resourcePath)
         m_sections.append({range.at(0).toDouble() * scale, range.at(1).toDouble() * scale,
                            names.at(i).toString().toUpper()});
     }
+}
+
+void TerrainManager::generateCourse(quint32 seed)
+{
+    Procedural::Settings settings;
+    settings.seed = seed;
+    settings.step = 0.25;  // 20 px, the same spacing as the JSON course
+    const Procedural::Course course = Procedural::generate(settings);
+
+    m_pixelsPerMetre = Physics::PixelsPerMetre;
+    const double scale = m_pixelsPerMetre;
+    m_spawnX = course.spawnX * scale;
+    m_finishX = course.finishX * scale;
+
+    m_chains.clear();
+    for (const Procedural::Chain &source : course.chains) {
+        if (source.heights.size() < 2)
+            continue;
+        TerrainChain chain;
+        chain.startX = source.startX * scale;
+        chain.step = course.step * scale;
+        chain.heights.reserve(static_cast<qsizetype>(source.heights.size()));
+        for (double height : source.heights)
+            chain.heights.append(height * scale);
+        m_chains.append(chain);
+    }
+
+    m_gaps.clear();
+    for (const Procedural::Ravine &ravine : course.ravines)
+        m_gaps.append({ravine.takeoff * scale, ravine.landing * scale});
+
+    m_sections.clear();
+    for (const Procedural::Zone &zone : course.zones)
+        m_sections.append({zone.start * scale, zone.end * scale, QString::fromStdString(zone.name)});
 }
 
 void TerrainManager::resetPickups(double spawnX)

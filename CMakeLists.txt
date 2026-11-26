@@ -17,6 +17,8 @@ qt_add_executable(HillClimbQt WIN32
     src/physics/physics.h
     src/terrain/terrain.cpp
     src/terrain/terrain.h
+    src/terrain/procedural.cpp
+    src/terrain/procedural.h
     src/vehicle/vehicle.cpp
     src/vehicle/vehicle.h
     src/core/game_core.cpp

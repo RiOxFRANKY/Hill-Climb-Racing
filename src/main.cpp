@@ -1,3 +1,4 @@
+#include "quick/game_controller.h"
 #include "quick/sprite_provider.h"
 
 #include <QCommandLineOption>
@@ -33,7 +34,23 @@ int main(int argc, char *argv[])
         QStringList{QStringLiteral("p"), QStringLiteral("play")},
         QStringLiteral("Skip the start menu and begin a race straight away."));
     parser.addOption(playOption);
+    QCommandLineOption seedOption(
+        QStringLiteral("seed"),
+        QStringLiteral("Seed for the procedural course (default 1)."),
+        QStringLiteral("number"), QStringLiteral("1"));
+    parser.addOption(seedOption);
+    QCommandLineOption courseOption(
+        QStringLiteral("course"),
+        QStringLiteral("Drive a course from a JSON file instead, e.g. :/assets/terrain_10km.json."),
+        QStringLiteral("file"));
+    parser.addOption(courseOption);
     parser.process(app);
+
+    bool seedOk = false;
+    const quint32 seed = parser.value(seedOption).toUInt(&seedOk);
+    if (!seedOk)
+        parser.showHelp(1);
+    GameController::setCourse(parser.value(courseOption), seed);
 
 #ifdef Q_OS_ANDROID
     // The game is designed for a 16:9 landscape screen.

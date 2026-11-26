@@ -54,6 +54,10 @@ public:
 
     explicit GameController(QObject *parent = nullptr);
 
+    // Which course the next GameController builds. Call before QML loads.
+    // An empty path means a procedural course from the given seed.
+    static void setCourse(const QString &jsonPath, quint32 seed);
+
     Q_INVOKABLE void tick(qreal frameTime);
     Q_INVOKABLE void restart();
     Q_INVOKABLE void togglePause();

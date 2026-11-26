@@ -10,14 +10,28 @@ plain C++. `GameController` (`src/quick`) exposes it to the QML scene in
 
 ## Course
 
-The track is the 10 km "Grassland Gauntlet" from `data/terrain_10km.npz`
-(10 ground chains, 9 ravines, 10 sections, 80 px per metre; see
-`data/terrain_numpy_implementation.md`). The game embeds it as
-`assets/terrain_10km.json`. After replacing the NPZ, regenerate the JSON with:
+The track is a 10 km course built by `src/terrain/procedural.cpp`. The ground
+is a function of distance made from three layers of domain-warped sine waves:
+long swells, rolling hills and short bumps. Ten zones (Green Valley through
+Home Stretch) each set their own amplitudes, wavelengths and gradient, and
+neighbouring zones blend over 120 m. The course gets rougher the further you
+drive, and nine ravines have a flat run-up, a takeoff lip and a downhill
+landing. The ground is sampled every 0.25 m into the same chains the renderer
+and physics already use. A seed shifts every wave, so each seed is a different
+course and the same seed is always the same course.
 
 ```powershell
-python tools/export_terrain.py
+.\build\HillClimbQt.exe --seed 42
 ```
+
+The hand-made "Grassland Gauntlet" course is still available:
+
+```powershell
+.\build\HillClimbQt.exe --course :/assets/terrain_10km.json
+```
+
+After replacing `data/terrain_10km.npz`, regenerate its JSON with
+`python tools/export_terrain.py`.
 
 ## Controls
 

@@ -10,6 +10,11 @@ void GameCore::loadCourse(const QString &resourcePath)
     m_terrain.loadCourse(resourcePath);
 }
 
+void GameCore::generateCourse(quint32 seed)
+{
+    m_terrain.generateCourse(seed);
+}
+
 void GameCore::resetGame()
 {
     clearKeys();

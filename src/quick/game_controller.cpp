@@ -7,10 +7,24 @@
 
 using namespace Physics;
 
+namespace {
+QString s_courseJson;
+quint32 s_courseSeed = 1;
+} // namespace
+
+void GameController::setCourse(const QString &jsonPath, quint32 seed)
+{
+    s_courseJson = jsonPath;
+    s_courseSeed = seed;
+}
+
 GameController::GameController(QObject *parent)
     : QObject(parent)
 {
-    m_core.loadCourse();
+    if (s_courseJson.isEmpty())
+        m_core.generateCourse(s_courseSeed);
+    else
+        m_core.loadCourse(s_courseJson);
     m_core.resetGame();
 }
 

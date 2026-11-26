@@ -43,6 +43,9 @@ public:
     TerrainManager() = default;
 
     void loadCourse(const QString &resourcePath = QStringLiteral(":/assets/terrain_10km.json"));
+    // Build a 10 km course from the procedural generator. The same seed
+    // always gives the same course.
+    void generateCourse(quint32 seed);
 
     [[nodiscard]] const TerrainChain *chainAt(double x) const;
     [[nodiscard]] double chainHeight(const TerrainChain &chain, double x) const;
