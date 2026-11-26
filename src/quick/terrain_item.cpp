@@ -19,6 +19,10 @@ void TerrainItem::setGame(GameController *game)
     m_game = game;
     if (m_game)
         m_frameConnection = connect(m_game, &GameController::frameChanged, this, &TerrainItem::refresh);
+    // A new map may have a different ground style; frameChanged also fires
+    // then, but redraw at once so the menu never shows the old look.
+    if (m_game)
+        connect(m_game, &GameController::courseChanged, this, &TerrainItem::refresh);
     refresh();
     emit gameChanged();
 }
@@ -29,7 +33,8 @@ void TerrainItem::refresh()
         return;
     const Core::GameCore &core = m_game->core();
     Render::TerrainRaster raster = Render::rasterizeTerrain(core.terrain(), core.cameraX(), core.cameraY(),
-                                                            GameController::DesignWidth, GameController::DesignHeight);
+                                                            GameController::DesignWidth, GameController::DesignHeight,
+                                                            Render::groundStyleForMap(m_game->map()));
     setPosition(raster.placement.topLeft());
     setSize(raster.placement.size());
     m_image = std::move(raster.image);

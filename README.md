@@ -59,8 +59,17 @@ leads to a mode (**Normal**, **Rescue**, **Race**) and then, for Normal, a map:
 **The Real Excursion**. All five maps can be played in Normal mode; Garage,
 Rescue and Race are marked *SOON*. `Esc` steps back a page.
 
-Each map is much harder than the one above it. They share the same artwork,
-but each has its own zone names and course. On each harder map the hills get
+Each map is much harder than the one above it. They share the same
+background, but each has its own ground style, drawn as pixel art by
+`src/render/terrain_raster.cpp`:
+
+- Grazing the Grass: grass over brown soil.
+- Beachday: sand over layered sandstone, with buried shells.
+- Swampy Vibe: moss and wet mud, with reeds and cattails, roots and bubbles.
+- Arctic Elegance: a snow cap over frozen rock, with ice crystals.
+- The Real Excursion: grey moon dust over cratered rock.
+
+Each map also has its own zone names and course. On each harder map the hills get
 taller and shorter, so steeper. The bumps get bigger, and every zone tilts
 further uphill into long climbs. Set pieces get much larger, steeper and
 closer together, with more ledges, kickers and valleys. Ravines become more
