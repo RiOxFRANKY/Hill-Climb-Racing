@@ -22,3 +22,6 @@
 Thumbs.db
 .vscode/
 .idea/
+
+# Local reverse-engineering notes (not part of the project)
+/lol/
