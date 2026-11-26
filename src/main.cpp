@@ -49,13 +49,20 @@ int main(int argc, char *argv[])
         QStringLiteral("Start this many metres along the course, to try a later zone."),
         QStringLiteral("metres"), QStringLiteral("0"));
     parser.addOption(startAtOption);
+    QCommandLineOption menuPageOption(
+        QStringLiteral("menu-page"),
+        QStringLiteral("Open the start menu on this page: main, mode or map."),
+        QStringLiteral("page"), QStringLiteral("main"));
+    parser.addOption(menuPageOption);
     parser.process(app);
 
     bool seedOk = false;
     const quint32 seed = parser.value(seedOption).toUInt(&seedOk);
     bool startOk = false;
     const double startAt = parser.value(startAtOption).toDouble(&startOk);
-    if (!seedOk || !startOk || startAt < 0.0)
+    const QString menuPage = parser.value(menuPageOption);
+    if (!seedOk || !startOk || startAt < 0.0
+        || !QStringList{QStringLiteral("main"), QStringLiteral("mode"), QStringLiteral("map")}.contains(menuPage))
         parser.showHelp(1);
     GameController::setCourse(parser.value(courseOption), seed, startAt);
 
@@ -74,7 +81,8 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("sprites"), new SpriteProvider);
-    engine.setInitialProperties({{QStringLiteral("startInGame"), parser.isSet(playOption)}});
+    engine.setInitialProperties({{QStringLiteral("startInGame"), parser.isSet(playOption)},
+                                 {QStringLiteral("startMenuPage"), menuPage}});
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("HillClimb", "Main");

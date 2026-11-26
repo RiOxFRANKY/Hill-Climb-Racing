@@ -1,24 +1,70 @@
 import QtQuick
 import HillClimb
 
-// Title screen over the idle car at the start line.
+// Title screen over the idle car at the start line. It has three pages:
+// main (Play, Garage, Controls, Quit), mode (Normal, Rescue, Race) and map.
+// Items marked locked are not built yet; choosing one only shows a notice.
 Item {
     id: root
 
     property string courseSummary
+    property string page: "main"
     property int selected: 0
     property bool showingControls: false
     property real time: 0
+    property real noticeTime: -10  // when a locked item was last chosen
 
-    readonly property var labels: ["PLAY", "CONTROLS", "QUIT"]
+    // True on the first page, where Esc quits instead of going back.
+    readonly property bool atTop: page === "main" && !showingControls
+
+    readonly property var pages: ({
+        "main": {
+            heading: root.courseSummary,
+            items: [
+                { label: "PLAY", action: "mode" },
+                { label: "GARAGE", locked: true },
+                { label: "CONTROLS", action: "controls" },
+                { label: "QUIT", action: "quit" },
+            ]
+        },
+        "mode": {
+            heading: "CHOOSE A MODE",
+            back: "main",
+            items: [
+                { label: "NORMAL", action: "map" },
+                { label: "RESCUE", locked: true },
+                { label: "RACE", locked: true },
+                { label: "BACK", action: "back" },
+            ]
+        },
+        "map": {
+            heading: "CHOOSE A MAP",
+            back: "mode",
+            items: [
+                { label: "GRAZING THE GRASS", action: "play", hint: root.courseSummary },
+                { label: "BEACHDAY", locked: true },
+                { label: "SWAMPY VIBE", locked: true },
+                { label: "ARCTIC ELEGANCE", locked: true },
+                { label: "THE REAL EXCURSION", locked: true },
+                { label: "BACK", action: "back" },
+            ]
+        },
+    })
+    readonly property var current: pages[page]
+    readonly property var items: current.items
+    readonly property var selectedItem: items[Math.min(selected, items.length - 1)]
+    // Longer lists get slimmer, wider buttons so six fit above the footer.
+    readonly property bool compact: items.length > 4
 
     signal playRequested()
     signal quitRequested()
 
     function reset() {
+        page = "main"
         selected = 0
         showingControls = false
         time = 0
+        noticeTime = -10
     }
 
     function advance(frameTime) {
@@ -26,17 +72,36 @@ Item {
     }
 
     function itemRect(index) {
-        // dialog_button.png (300x74) at a uniform 1.2x.
-        return Qt.rect(960 - 180, 384 + index * 112, 360, 88.8)
+        // dialog_button.png (300x74): 1.2x normally; wider and slimmer when compact.
+        return compact ? Qt.rect(960 - 240, 384 + index * 92, 480, 76)
+                       : Qt.rect(960 - 180, 384 + index * 112, 360, 88.8)
+    }
+
+    function openPage(name) {
+        page = name
+        selected = 0
+        noticeTime = -10
+    }
+
+    function goBack() {
+        if (current.back !== undefined)
+            openPage(current.back)
     }
 
     function activate(index) {
-        if (index === 0)
-            playRequested()
-        else if (index === 1)
-            showingControls = true
-        else if (index === 2)
-            quitRequested()
+        const item = items[index]
+        if (item.locked) {
+            noticeTime = time
+            return
+        }
+        switch (item.action) {
+        case "mode": openPage("mode"); break
+        case "map": openPage("map"); break
+        case "back": goBack(); break
+        case "controls": showingControls = true; break
+        case "play": playRequested(); break
+        case "quit": quitRequested(); break
+        }
     }
 
     function handleKey(key) {
@@ -46,10 +111,12 @@ Item {
                 showingControls = false
             return
         }
-        if (key === Qt.Key_Up || key === Qt.Key_W)
-            selected = (selected + labels.length - 1) % labels.length
+        if (key === Qt.Key_Escape || key === Qt.Key_Backspace)
+            goBack()
+        else if (key === Qt.Key_Up || key === Qt.Key_W)
+            selected = (selected + items.length - 1) % items.length
         else if (key === Qt.Key_Down || key === Qt.Key_S)
-            selected = (selected + 1) % labels.length
+            selected = (selected + 1) % items.length
         else if (key === Qt.Key_Return || key === Qt.Key_Enter || key === Qt.Key_Space)
             activate(selected)
     }
@@ -128,12 +195,12 @@ Item {
                 }
             }
 
-            // 2. Course summary under the board.
+            // 2. Page heading under the board.
             ShadowText {
                 y: title.centerY + title.boardHeight / 2 + 28
                 width: parent.width
                 height: 40
-                text: root.courseSummary
+                text: root.current.heading
                 font: Theme.uiFont(16)
                 shadowX: 3
                 shadowY: 3
@@ -142,12 +209,14 @@ Item {
 
         // 3. Buttons. The highlighted one gets a pixel frame and arrow; the others are dimmed.
         Repeater {
-            model: root.labels.length
+            model: root.items
 
             Item {
                 id: button
 
                 required property int index
+                required property var modelData
+                readonly property bool locked: modelData.locked === true
                 readonly property rect area: root.itemRect(index)
                 readonly property bool isSelected: root.selected === index
                 readonly property bool isPressed: buttonArea.pressed
@@ -188,11 +257,26 @@ Item {
                     y: button.isPressed ? 2 : 0
                     width: button.width
                     height: button.height
-                    text: root.labels[button.index]
-                    font: Theme.pixelFont(18)
-                    color: button.isSelected ? Theme.rgb(255, 220, 60) : Theme.rgb(225, 228, 235)
+                    text: button.modelData.label
+                    font: Theme.pixelFont(root.compact ? 15 : 18)
+                    color: button.locked ? Theme.rgb(150, 154, 162)
+                         : button.isSelected ? Theme.rgb(255, 220, 60) : Theme.rgb(225, 228, 235)
                     shadowX: 3
                     shadowY: 3
+                }
+
+                // Tag beside items that are not built yet.
+                ShadowText {
+                    visible: button.locked
+                    x: button.width + 18
+                    width: 120
+                    height: button.height
+                    horizontalAlignment: Text.AlignLeft
+                    text: "SOON"
+                    font: Theme.uiFont(12)
+                    color: Theme.rgb(255, 210, 50)
+                    shadowX: 2
+                    shadowY: 2
                 }
 
                 // A click only counts when released over the button it started on.
@@ -236,13 +320,32 @@ Item {
             }
         }
 
-        // 4. Footer hint (keyboard only).
+        // 4. What the highlighted item is. Choosing a locked item makes the
+        // "coming soon" notice flash.
+        ShadowText {
+            readonly property real since: root.time - root.noticeTime
+            readonly property bool flashing: since < 1.2
+
+            y: parent.height - 128
+            width: parent.width
+            height: 40
+            text: root.selectedItem.locked ? root.selectedItem.label + "  •  COMING SOON"
+                                           : (root.selectedItem.hint || "")
+            font: Theme.uiFont(14)
+            color: flashing && Math.floor(since * 8) % 2 === 0 ? Theme.rgb(255, 120, 60)
+                 : root.selectedItem.locked ? Theme.rgb(255, 210, 50) : Theme.rgb(240, 245, 255)
+            shadowX: 3
+            shadowY: 3
+        }
+
+        // 5. Footer hint (keyboard only).
         ShadowText {
             visible: !Theme.touchUi
             y: parent.height - 70
             width: parent.width
             height: 40
-            text: "UP / DOWN  SELECT   •   ENTER  CONFIRM   •   F11  FULLSCREEN"
+            text: root.atTop ? "UP / DOWN  SELECT   •   ENTER  CONFIRM   •   F11  FULLSCREEN"
+                             : "UP / DOWN  SELECT   •   ENTER  CONFIRM   •   ESC  BACK"
             font: Theme.uiFont(12)
             color: Theme.rgb(240, 245, 255)
         }

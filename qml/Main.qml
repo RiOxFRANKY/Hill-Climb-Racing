@@ -6,7 +6,10 @@ Window {
     id: window
 
     property bool startInGame: false
+    property string startMenuPage: "main"
     property bool inMenu: !startInGame
+
+    Component.onCompleted: menu.openPage(startMenuPage)
     readonly property bool isAndroid: Qt.platform.os === "android"
 
     width: 1920
@@ -59,11 +62,12 @@ Window {
         const altEnter = (key === Qt.Key_Return || key === Qt.Key_Enter) && (event.modifiers & Qt.AltModifier)
         if (key === Qt.Key_F11 || altEnter) {
             toggleFullScreen()
-        } else if (escape && !isAndroid && visibility === Window.FullScreen && !(inMenu && menu.showingControls)) {
-            // Esc leaves fullscreen first.
+        } else if (escape && !isAndroid && visibility === Window.FullScreen && !(inMenu && !menu.atTop)) {
+            // Esc leaves fullscreen first, unless it is stepping back through the menu.
             toggleFullScreen()
         } else if (inMenu) {
-            if (escape && !menu.showingControls)
+            // Esc goes back a page; on the first page it quits.
+            if (escape && menu.atTop)
                 Qt.quit()
             else
                 menu.handleKey(escape ? Qt.Key_Escape : key)

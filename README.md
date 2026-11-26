@@ -45,7 +45,11 @@ After replacing `data/terrain_10km.npz`, regenerate its JSON with
 ## Controls
 
 The game opens on a start menu. Use `Up`/`Down` (or `W`/`S`) and `Enter`, or
-the mouse, to pick **Play**, **Controls** or **Quit**.
+the mouse, to pick **Play**, **Garage**, **Controls** or **Quit**. **Play**
+leads to a mode (**Normal**, **Rescue**, **Race**) and then, for Normal, a map:
+**Grazing the Grass**, **Beachday**, **Swampy Vibe**, **Arctic Elegance** or
+**The Real Excursion**. Only Normal on Grazing the Grass can be played so far;
+the others are marked *SOON*. `Esc` steps back a page.
 
 - `D` or `Right Arrow`: accelerate / rotate clockwise in the air
 - `A` or `Left Arrow`: brake, reverse / rotate counter-clockwise in the air
@@ -53,8 +57,8 @@ the mouse, to pick **Play**, **Controls** or **Quit**.
 - `P`: pause or resume
 - `R`: restart
 - `F11` or `Alt+Enter`: toggle fullscreen
-- `Esc`: leave fullscreen; otherwise return to the start menu (quits from
-  the menu)
+- `Esc`: leave fullscreen; otherwise return to the start menu (steps back a
+  page in the menu, and quits from its first page)
 
 On a touch screen, hold the on-screen **Brake**, **Boost** and **Gas** pedals
 (several at once is fine), and tap **P Pause**, **R Restart** or **Esc Menu**
