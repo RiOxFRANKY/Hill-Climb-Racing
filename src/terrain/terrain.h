@@ -92,6 +92,7 @@ private:
     double m_nextPickupX = 0.0;  // where the next coin group may start
     double m_nextFuelX = 0.0;    // where the next fuel can goes
     qint64 m_coinGroup = 0;      // counts coin groups, to vary them
+    double m_fuelBudgetScale = 1.0;  // below 1 on the hardest maps: cans come sooner
 };
 
 } // namespace Terrain

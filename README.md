@@ -51,13 +51,18 @@ leads to a mode (**Normal**, **Rescue**, **Race**) and then, for Normal, a map:
 **The Real Excursion**. All five maps can be played in Normal mode; Garage,
 Rescue and Race are marked *SOON*. `Esc` steps back a page.
 
-Each map is harder than the one above it. They share the same artwork, but
-each has its own zone names and course, and the ground gets bigger and
-bumpier, set pieces get larger, steeper and closer together (with more ledges
-and kicker ramps), the climbs get longer, and ravines become more frequent
-and wider: 9 jumps up to 11 m on the first two maps, 17 on the next two, and
-25 up to about 14 m on The Real Excursion. To start straight on a map, pass
-its number (1 to 5):
+Each map is much harder than the one above it. They share the same artwork,
+but each has its own zone names and course. On each harder map the hills get
+taller and shorter, so steeper. The bumps get bigger, and every zone tilts
+further uphill into long climbs. Set pieces get much larger, steeper and
+closer together, with more ledges, kickers and valleys. Ravines become more
+frequent and wider: 9 jumps up to 11 m on the first two maps, 17 on the next
+two, and 25 up to about 15 m on The Real Excursion. About 2% of the ground on
+Grazing the Grass is steeper than 35 degrees; on the later maps it is about
+8%, 14%, 22% and 28%. No slope goes past about 56 degrees. Steeper spots are
+smoothly eased to that limit, which the tyres can still grip. The hardest
+maps also put fuel cans a little closer together. To start straight on a map,
+pass its number (1 to 5):
 
 ```powershell
 .\build\HillClimbQt.exe --map 5

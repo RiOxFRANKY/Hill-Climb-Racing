@@ -108,6 +108,10 @@ struct Settings {
     double finishFlat = 50.0;  // flat run-out before the finish
     double ravineMinWidth = 7.0;
     double ravineMaxWidth = 11.0;
+    // Steepest gradient the ground may have (1.48 is about 56 degrees, below
+    // the ~61 degrees the tyres' grip can hold). Steeper spots are eased
+    // towards this rather than cut off; see limitSlopes in procedural.cpp.
+    double maxGradient = 1.48;
     std::vector<ZoneProfile> zones = defaultZones();
 
     static std::vector<ZoneProfile> defaultZones();

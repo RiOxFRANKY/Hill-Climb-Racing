@@ -60,6 +60,7 @@ void TerrainManager::loadCourse(const QString &resourcePath)
     if (!file.open(QIODevice::ReadOnly))
         qFatal("Missing course data %s", qPrintable(resourcePath));
     const QJsonObject course = QJsonDocument::fromJson(file.readAll()).object();
+    m_fuelBudgetScale = 1.0;
 
     m_pixelsPerMetre = course.value(QStringLiteral("pixels_per_metre")).toDouble(Physics::PixelsPerMetre);
     const double scale = m_pixelsPerMetre;
@@ -109,6 +110,12 @@ void TerrainManager::generateCourse(quint32 seed, int map)
     settings.step = 0.25;  // 20 px, the same spacing as the JSON course
     const Procedural::Course course = Procedural::generate(settings);
 
+    // The hardest maps are steep almost everywhere, which costs more fuel
+    // than the gradient estimate in nextFuelX accounts for, so their cans
+    // come a little sooner: 1.0, 0.99, 0.96, 0.91 and 0.84 of the budget.
+    const double hardness = std::clamp(map, 0, Procedural::Settings::MapCount - 1);
+    m_fuelBudgetScale = 1.0 - 0.01 * hardness * hardness;
+
     m_pixelsPerMetre = Physics::PixelsPerMetre;
     const double scale = m_pixelsPerMetre;
     m_spawnX = course.spawnX * scale;
@@ -152,7 +159,7 @@ void TerrainManager::resetPickups(double spawnX)
     m_pickups.clear();
     m_nextPickupX = 22.0 * Metre;
     // The first can comes a little sooner: the car starts from a standstill.
-    m_nextFuelX = nextFuelX(0.0, 0.85 * FuelBudget);
+    m_nextFuelX = nextFuelX(0.0, 0.85 * FuelBudget * m_fuelBudgetScale);
     m_coinGroup = 0;
     ensurePickupsAhead(spawnX - 560.0);
     const double keepFrom = spawnX - 300.0;
@@ -385,7 +392,7 @@ void TerrainManager::ensurePickupsAhead(double cameraX)
                 continue;
             }
             m_pickups.push_back({Pickup::Type::Fuel, QPointF(x, surfaceHeight(x) + 65.0), false, 0});
-            m_nextFuelX = nextFuelX(x, FuelBudget);
+            m_nextFuelX = nextFuelX(x, FuelBudget * m_fuelBudgetScale);
             // Leave the can on its own rather than inside a row of coins.
             m_nextPickupX = std::max(m_nextPickupX, x + 4.0 * Metre);
             continue;

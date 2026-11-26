@@ -60,6 +60,29 @@ double sampleTable(const std::vector<double> &table, double x)
     return table[index] + (table[index + 1] - table[index]) * t;
 }
 
+// Rebuilds a chain from its own gradients with every gradient passed through a
+// soft cap: g / (1 + (|g| / limit)^6)^(1/6). Gentle and moderate slopes are
+// left almost exactly as they were (a slope at half the limit changes by about
+// 0.3%), while anything steeper bends smoothly towards the limit instead of
+// stopping at a sharp corner. Walls the tyres could never climb become steep
+// ramps they can. The chain keeps its starting height; later points shift by
+// however much height the capped slopes gave up.
+void limitSlopes(Chain &chain, double step, double limit)
+{
+    if (chain.heights.size() < 2 || limit <= 0.0)
+        return;
+    double previous = chain.heights[0];
+    double rebuilt = chain.heights[0];
+    for (std::size_t i = 1; i < chain.heights.size(); ++i) {
+        const double gradient = (chain.heights[i] - previous) / step;
+        previous = chain.heights[i];
+        const double ratio = std::abs(gradient) / limit;
+        const double capped = gradient / std::pow(1.0 + std::pow(ratio, 6.0), 1.0 / 6.0);
+        rebuilt += capped * step;
+        chain.heights[i] = rebuilt;
+    }
+}
+
 // Set pieces grow as the course goes on.
 double difficultyAt(double x)
 {
@@ -107,29 +130,39 @@ Settings Settings::forMap(int map, std::uint32_t seed)
     Settings settings;
     settings.seed = seed + static_cast<std::uint32_t>(map) * 7919u;
     // Wider ravines on harder maps.
-    settings.ravineMinWidth = 7.0 + 0.6 * d;
-    settings.ravineMaxWidth = 11.0 + 0.8 * d;
+    settings.ravineMinWidth = 7.0 + 0.8 * d;
+    settings.ravineMaxWidth = 11.0 + 1.0 * d;
 
     for (std::size_t i = 0; i < settings.zones.size(); ++i) {
         ZoneProfile &zone = settings.zones[i];
         if (map > 0)
             zone.name = zoneNames[map][i];
 
-        // Bigger, bumpier, more twisted ground.
-        zone.waves.swellAmp *= 1.0 + 0.10 * d;
-        zone.waves.hillAmp *= 1.0 + 0.12 * d;
-        zone.waves.bumpAmp *= 1.0 + 0.18 * d;
-        zone.waves.warp += 0.1 * d;
-        zone.climb *= 1.0 + 0.25 * d;
+        // Much taller, sharper and bumpier ground: by the last map the
+        // rolling hills are about 2.4 times as tall and a quarter shorter,
+        // so they are both bigger and steeper.
+        WaveProfile &w = zone.waves;
+        w.swellAmp *= 1.0 + 0.35 * d;
+        w.swellLength *= 1.0 - 0.06 * d;
+        w.hillAmp *= 1.0 + 0.35 * d;
+        w.hillLength *= 1.0 - 0.06 * d;
+        w.bumpAmp *= 1.0 + 0.35 * d;
+        w.bumpLength *= 1.0 - 0.04 * d;
+        w.warp += 0.15 * d;
 
-        // Larger, steeper set pieces, closer together, with more ledges and
-        // kicker ramps in the mix.
+        // Long sustained climbs: every zone tilts further uphill, so the
+        // course keeps gaining height and downhill zones level off.
+        zone.climb = zone.climb * (1.0 + 0.3 * d) + 0.015 * d;
+
+        // Much larger, steeper set pieces packed closer together, with more
+        // ledges and kicker ramps in the mix.
         FeatureProfile &f = zone.features;
-        f.size *= 1.0 + 0.12 * d;
-        f.steepness = std::min(0.82, f.steepness + 0.05 * d);
-        f.spacing = std::max(20.0, f.spacing * (1.0 - 0.1 * d));
-        f.steps += 0.3 * d;
-        f.kicker += 0.5 * d;
+        f.size *= 1.0 + 0.3 * d;
+        f.steepness = std::min(0.95, f.steepness + 0.08 * d);
+        f.spacing = std::max(15.0, f.spacing * (1.0 - 0.15 * d));
+        f.steps += 0.4 * d;
+        f.kicker += 0.6 * d;
+        f.valley += 0.3 * d;
 
         // From the third map on, every zone after the first two gets more jumps.
         if (i >= 2)
@@ -489,6 +522,9 @@ Course generate(const Settings &settings)
         chain.heights.push_back(calmBase + offset);
     }
     course.chains.push_back(std::move(chain));
+
+    for (Chain &solid : course.chains)
+        limitSlopes(solid, course.step, settings.maxGradient);
     return course;
 }
 
