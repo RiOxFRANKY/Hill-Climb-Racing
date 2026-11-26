@@ -131,6 +131,45 @@ QPointF GameController::worldToScreen(const QPointF &world) const
     return {world.x() - m_core.cameraX(), DesignHeight - (world.y() - m_core.cameraY())};
 }
 
+QVariantList GameController::bridgePlanks() const
+{
+    QVariantList planks;
+    const double left = m_core.cameraX() - 200.0;
+    const double right = m_core.cameraX() + DesignWidth + 200.0;
+    for (const Terrain::BridgeSet::Bridge &bridge : m_core.bridges().bridges()) {
+        if (bridge.endX < left || bridge.startX > right)
+            continue;
+        for (int i = 0; i + 1 < bridge.joints.size(); ++i) {
+            const QPointF a = worldToScreen(bridge.joints[i]);
+            const QPointF b = worldToScreen(bridge.joints[i + 1]);
+            const QPointF d = b - a;
+            planks.append(QVariantMap{
+                {QStringLiteral("x"), a.x()},
+                {QStringLiteral("y"), a.y()},
+                {QStringLiteral("length"), std::hypot(d.x(), d.y())},
+                {QStringLiteral("angle"), std::atan2(d.y(), d.x()) * 180.0 / Pi},
+            });
+        }
+    }
+    return planks;
+}
+
+QVariantList GameController::bridgePosts() const
+{
+    QVariantList posts;
+    const double left = m_core.cameraX() - 200.0;
+    const double right = m_core.cameraX() + DesignWidth + 200.0;
+    for (const Terrain::BridgeSet::Bridge &bridge : m_core.bridges().bridges()) {
+        if (bridge.endX < left || bridge.startX > right)
+            continue;
+        for (const QPointF &anchor : {bridge.joints.constFirst(), bridge.joints.constLast()}) {
+            const QPointF p = worldToScreen(anchor);
+            posts.append(QVariantMap{{QStringLiteral("x"), p.x()}, {QStringLiteral("y"), p.y()}});
+        }
+    }
+    return posts;
+}
+
 QPointF GameController::chassisPos() const
 {
     return worldToScreen(m_core.vehicle().chassis().position);

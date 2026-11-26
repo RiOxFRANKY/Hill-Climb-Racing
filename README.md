@@ -18,7 +18,15 @@ neighbouring zones blend over 120 m. The course gets rougher the further you
 drive. On top of the waves, each zone places its own mix of set pieces:
 big hills (often steeper on one side), flat-topped mesas, deep valleys, runs
 of rollers, staircases of ledges and kicker ramps. Nine ravines have a flat
-run-up, a takeoff lip and a downhill landing. The ground is sampled every
+run-up, a takeoff lip and a downhill landing.
+
+Grazing the Grass also has five plank bridges over 10-18 m gorges
+(`src/terrain/bridge.cpp`). Each bridge is a chain of planks pinned to both
+cliff edges and simulated in the same physics substeps as the car. The links
+stretch a little like rope (an XPBD compliant constraint), so the deck hangs
+in a natural sag. It dips about another metre under the car, as the wheels
+and the planks push against each other by their masses. Once the car has
+passed, it swings back and settles. The ground is sampled every
 0.25 m into the same chains the renderer and physics already use. A seed
 shifts every wave and picks every set piece, so each seed is a different
 course and the same seed is always the same course.

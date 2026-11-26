@@ -168,6 +168,14 @@ Settings Settings::forMap(int map, std::uint32_t seed)
         if (i >= 2)
             zone.ravines += map / 2;
     }
+
+    // Grazing the Grass has five plank bridges over gorges, spread along the
+    // course: in Clover Hills, Pebble Run, Rolling Swells, Saw Ridge and
+    // Home Stretch.
+    if (map == 0) {
+        for (std::size_t i : {1u, 3u, 4u, 6u, 9u})
+            settings.zones[i].bridges = 1;
+    }
     return settings;
 }
 
@@ -452,19 +460,24 @@ Course generate(const Settings &settings)
     course.step = settings.step;
     course.spawnX = std::min(10.0, settings.startFlat * 0.4);
 
-    // Zones, and where each zone's ravines go.
+    // Zones, and where each zone's ravines and bridges go. They share the
+    // zone's evenly spaced slots; bridges take the first ones.
     SplitMix rng(0xBADC0DEull + settings.seed);
     double start = 0.0;
     for (const ZoneProfile &zone : settings.zones) {
         course.zones.push_back({start, start + zone.length, zone.name});
-        const double usable = zone.length - 240.0;  // keep jumps clear of zone edges
-        for (int k = 0; k < zone.ravines && usable > 0.0; ++k) {
-            const double slot = usable / zone.ravines;
+        const double usable = zone.length - 240.0;  // keep gaps clear of zone edges
+        const int gaps = zone.ravines + zone.bridges;
+        for (int k = 0; k < gaps && usable > 0.0; ++k) {
+            const bool bridge = k < zone.bridges;
+            const double slot = usable / gaps;
             const double centre = start + 120.0 + slot * (k + 0.5) + rng.range(-0.25, 0.25) * slot;
-            const double width = rng.range(settings.ravineMinWidth, settings.ravineMaxWidth);
+            // Bridges span 10-18 m gorges; jumps use the map's ravine widths.
+            const double width = bridge ? rng.range(10.0, 18.0)
+                                        : rng.range(settings.ravineMinWidth, settings.ravineMaxWidth);
             const double takeoff = std::round(centre / course.step) * course.step;
             const double landing = takeoff + std::round(width / course.step) * course.step;
-            course.ravines.push_back({takeoff, landing});
+            course.ravines.push_back({takeoff, landing, bridge});
         }
         start += zone.length;
     }
@@ -476,7 +489,8 @@ Course generate(const Settings &settings)
 
     // Around each ravine the hills calm down into a short runway, the
     // takeoff lip kicks up, and the landing side slopes away so the car
-    // comes down onto a downhill rather than a wall.
+    // comes down onto a downhill rather than a wall. Bridges get the calm
+    // runway on both sides but no lip or drop, so the deck meets level ground.
     auto ravineShape = [&course](double x, double &calm, double &offset) {
         calm = 0.0;
         offset = 0.0;
@@ -485,6 +499,8 @@ Course generate(const Settings &settings)
                 continue;
             calm = std::max(calm, smoothstep(r.takeoff - 50.0, r.takeoff - 32.0, x)
                                       * (1.0 - smoothstep(r.landing + 22.0, r.landing + 40.0, x)));
+            if (r.bridge)
+                continue;
             if (x <= r.takeoff) {
                 offset += 1.4 * smoothstep(r.takeoff - 12.0, r.takeoff, x);
             } else if (x >= r.landing) {

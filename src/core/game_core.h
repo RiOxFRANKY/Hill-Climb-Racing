@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../terrain/bridge.h"
 #include "../terrain/terrain.h"
 #include "../vehicle/vehicle.h"
 
@@ -35,6 +36,7 @@ public:
     [[nodiscard]] bool boosting() const;
 
     [[nodiscard]] const Terrain::TerrainManager &terrain() const { return m_terrain; }
+    [[nodiscard]] const Terrain::BridgeSet &bridges() const { return m_bridges; }
     [[nodiscard]] Terrain::TerrainManager &terrain() { return m_terrain; }
     [[nodiscard]] const Vehicle::VehicleEntity &vehicle() const { return m_vehicle; }
     [[nodiscard]] Vehicle::VehicleEntity &vehicle() { return m_vehicle; }
@@ -54,6 +56,7 @@ public:
 
 private:
     Terrain::TerrainManager m_terrain;
+    Terrain::BridgeSet m_bridges;
     Vehicle::VehicleEntity m_vehicle;
     QSet<int> m_keys;
     bool m_gasPedal = false;

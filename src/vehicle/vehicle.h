@@ -5,6 +5,7 @@
 
 namespace Terrain {
 class TerrainManager;
+class BridgeSet;
 }
 
 namespace Vehicle {
@@ -14,7 +15,10 @@ public:
     VehicleEntity() = default;
 
     void reset(double spawnX, double surfaceHeightAtSpawn);
-    void stepPhysics(double h, double throttle, bool boost, const Terrain::TerrainManager &terrain);
+    // bridges may be null. When given, the wheels and body also rest on the
+    // bridge decks and push them down.
+    void stepPhysics(double h, double throttle, bool boost, const Terrain::TerrainManager &terrain,
+                     Terrain::BridgeSet *bridges = nullptr);
 
     [[nodiscard]] const Physics::RigidBody &chassis() const { return m_chassis; }
     [[nodiscard]] Physics::RigidBody &chassis() { return m_chassis; }

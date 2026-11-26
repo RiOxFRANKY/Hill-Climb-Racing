@@ -57,6 +57,7 @@ struct ZoneProfile {
     int ravines = 0;         // jumps placed in this zone
     WaveProfile waves;
     FeatureProfile features;
+    int bridges = 0;         // gorges with a plank bridge across, placed in this zone
 };
 
 enum class FeatureKind { Hill, Mesa, Valley, Rollers, Steps, Kicker };
@@ -77,6 +78,7 @@ struct Feature {
 struct Ravine {
     double takeoff = 0.0;  // last solid x before the hole
     double landing = 0.0;  // first solid x after it
+    bool bridge = false;   // spanned by a plank bridge instead of jumped
 };
 
 struct Chain {

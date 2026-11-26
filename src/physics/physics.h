@@ -87,6 +87,12 @@ QPointF pointVelocity(const RigidBody &body, const QPointF &arm);
 double generalizedInverseMass(const RigidBody &body, const QPointF &arm, const QPointF &direction);
 double applyCorrection(RigidBody &a, RigidBody *b, const QPointF &armA, const QPointF &armB,
                        const QPointF &delta, double compliance, double h);
+// Like applyCorrection against a second object that is not a RigidBody (such
+// as a point on a bridge deck), given how easily that object moves along
+// delta. Moves only body; returns lambda so the caller can move the other
+// object by -delta direction * lambda times its own inverse mass.
+double applyCorrectionAgainst(RigidBody &body, const QPointF &arm, const QPointF &delta,
+                              double otherInverseMass);
 void applyImpulse(RigidBody &body, const QPointF &arm, const QPointF &impulse);
 QPointF chassisLocal(double x, double y);
 

@@ -29,6 +29,7 @@ struct TerrainChain {
 struct TerrainGap {
     double start = 0.0;
     double end = 0.0;
+    bool bridge = false;  // spanned by a plank bridge (see bridge.h)
 };
 
 struct CourseSection {

@@ -26,6 +26,8 @@ class GameController : public QObject
     Q_PROPERTY(qreal wheelSpriteRadius READ wheelSpriteRadius CONSTANT)
     Q_PROPERTY(QPointF finishPos READ finishPos NOTIFY frameChanged)
     Q_PROPERTY(QVariantList pickups READ pickups NOTIFY frameChanged)
+    Q_PROPERTY(QVariantList bridgePlanks READ bridgePlanks NOTIFY frameChanged)
+    Q_PROPERTY(QVariantList bridgePosts READ bridgePosts NOTIFY frameChanged)
 
     Q_PROPERTY(int distance READ distance NOTIFY frameChanged)
     Q_PROPERTY(int coins READ coins NOTIFY frameChanged)
@@ -91,6 +93,11 @@ public:
     [[nodiscard]] qreal wheelSpriteRadius() const;
     [[nodiscard]] QPointF finishPos() const;
     [[nodiscard]] QVariantList pickups() const;
+    // Planks of the bridges on screen: x and y of the plank's left end on its
+    // top face, its length, and its angle in degrees (screen space, clockwise).
+    [[nodiscard]] QVariantList bridgePlanks() const;
+    // The cliff-edge anchor points of the bridges on screen, as x and y.
+    [[nodiscard]] QVariantList bridgePosts() const;
 
     [[nodiscard]] int distance() const;
     [[nodiscard]] int coins() const { return m_core.coins(); }

@@ -1,4 +1,5 @@
 #include "vehicle.h"
+#include "../terrain/bridge.h"
 #include "../terrain/terrain.h"
 
 #include <QVarLengthArray>
@@ -31,7 +32,8 @@ void VehicleEntity::reset(double spawnX, double surfaceHeightAtSpawn)
     m_fuel = 100.0;
 }
 
-void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Terrain::TerrainManager &terrain)
+void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Terrain::TerrainManager &terrain,
+                                Terrain::BridgeSet *bridges)
 {
     struct Contact {
         RigidBody *body;
@@ -115,20 +117,23 @@ void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Ter
     }
 
     // 3. Ground contacts with static friction
-    QVarLengthArray<Contact, 12> contacts;
-    const auto collide = [&](RigidBody &body, const QPointF &center, double radius,
+    QVarLengthArray<Contact, 24> contacts;
+    // Pushes body out along normal by up to depth. With a bridge contact, the
+    // push is shared with the deck by mass, and the deck is pushed the other way.
+    const auto resolve = [&](RigidBody &body, const QPointF &center, double radius, const QPointF &normal,
+                             double depth, const Terrain::BridgeSet::Contact *deck,
                              double staticFriction, double dynamicFriction) {
-        QPointF normal;
-        double depth = 0.0;
-        if (!terrain.findTerrainContact(center, radius, &normal, &depth))
-            return false;
-
         const QPointF arm = center - body.position - normal * radius;
         const double normalSpeed = QPointF::dotProduct(pointVelocity(body, arm), normal);
         const double correction =
             std::min(depth, std::max(0.0, (MaxPushOutSpeed - normalSpeed) * h));
-        const double normalLambda =
-            applyCorrection(body, nullptr, arm, QPointF(), normal * correction, 0.0, h);
+        double normalLambda = 0.0;
+        if (deck) {
+            normalLambda = applyCorrectionAgainst(body, arm, normal * correction, bridges->inverseMassAt(*deck));
+            bridges->push(*deck, -normal * normalLambda);
+        } else {
+            normalLambda = applyCorrection(body, nullptr, arm, QPointF(), normal * correction, 0.0, h);
+        }
 
         const QPointF localArm = rotatePoint(arm, -body.angle);
         const QPointF before = body.previousPosition + rotatePoint(localArm, body.previousAngle);
@@ -147,7 +152,24 @@ void VehicleEntity::stepPhysics(double h, double throttle, bool boost, const Ter
         }
 
         contacts.append({&body, arm, normal, normalLambda, dynamicFriction, stuck});
-        return true;
+    };
+
+    // A circle may touch the ground, a bridge deck, or both (at the cliff edge).
+    const auto collide = [&](RigidBody &body, const QPointF &center, double radius,
+                             double staticFriction, double dynamicFriction) {
+        bool touched = false;
+        QPointF normal;
+        double depth = 0.0;
+        if (terrain.findTerrainContact(center, radius, &normal, &depth)) {
+            resolve(body, center, radius, normal, depth, nullptr, staticFriction, dynamicFriction);
+            touched = true;
+        }
+        Terrain::BridgeSet::Contact deck;
+        if (bridges && bridges->findContact(center, radius, &deck)) {
+            resolve(body, center, radius, deck.normal, deck.depth, &deck, staticFriction, dynamicFriction);
+            touched = true;
+        }
+        return touched;
     };
 
     m_wheelContacts = 0;

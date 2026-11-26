@@ -136,7 +136,7 @@ void TerrainManager::generateCourse(quint32 seed, int map)
 
     m_gaps.clear();
     for (const Procedural::Ravine &ravine : course.ravines)
-        m_gaps.append({ravine.takeoff * scale, ravine.landing * scale});
+        m_gaps.append({ravine.takeoff * scale, ravine.landing * scale, ravine.bridge});
 
     m_sections.clear();
     for (const Procedural::Zone &zone : course.zones)

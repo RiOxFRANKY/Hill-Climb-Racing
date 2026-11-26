@@ -19,6 +19,8 @@ qt_add_executable(HillClimbQt WIN32
     src/terrain/terrain.h
     src/terrain/procedural.cpp
     src/terrain/procedural.h
+    src/terrain/bridge.cpp
+    src/terrain/bridge.h
     src/vehicle/vehicle.cpp
     src/vehicle/vehicle.h
     src/core/game_core.cpp
@@ -44,6 +46,7 @@ qt_add_qml_module(HillClimbQt
         qml/Background.qml
         qml/FinishLine.qml
         qml/Pickups.qml
+        qml/Bridges.qml
         qml/Car.qml
         qml/Hud.qml
         qml/Speedometer.qml

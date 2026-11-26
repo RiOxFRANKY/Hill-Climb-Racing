@@ -8,16 +8,19 @@ namespace Core {
 void GameCore::loadCourse(const QString &resourcePath)
 {
     m_terrain.loadCourse(resourcePath);
+    m_bridges.build(m_terrain);
 }
 
 void GameCore::generateCourse(quint32 seed, int map)
 {
     m_terrain.generateCourse(seed, map);
+    m_bridges.build(m_terrain);
 }
 
 void GameCore::resetGame()
 {
     clearKeys();
+    m_bridges.reset();
     const double spawnX = m_terrain.spawnX();
     m_vehicle.reset(spawnX, m_terrain.surfaceHeight(spawnX));
     m_gameOverReason.clear();
@@ -103,8 +106,13 @@ void GameCore::updatePhysics(double dt)
     m_vehicle.setHeadHit(false);
     m_vehicle.setBodyContact(false);
     const double h = dt / Physics::PhysicsSubsteps;
-    for (int i = 0; i < Physics::PhysicsSubsteps; ++i)
-        m_vehicle.stepPhysics(h, throttle, boost, m_terrain);
+    for (int i = 0; i < Physics::PhysicsSubsteps; ++i) {
+        // Bridges move in the same substeps, so the car and the deck it
+        // rests on push against each other every step.
+        m_bridges.beginStep(h, m_vehicle.chassis().position.x());
+        m_vehicle.stepPhysics(h, throttle, boost, m_terrain, &m_bridges);
+        m_bridges.endStep(h);
+    }
 
     // The engine burns fuel the whole time, so stopping or crawling still
     // costs fuel. Per second, as a percentage of the tank: 1.0 idling, 2.4

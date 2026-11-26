@@ -74,6 +74,21 @@ double applyCorrection(RigidBody &a, RigidBody *b, const QPointF &armA, const QP
     return lambda;
 }
 
+double applyCorrectionAgainst(RigidBody &body, const QPointF &arm, const QPointF &delta,
+                              double otherInverseMass)
+{
+    const double magnitude = length(delta);
+    if (magnitude < 1e-9)
+        return 0.0;
+
+    const QPointF direction = delta / magnitude;
+    const double lambda = magnitude / (generalizedInverseMass(body, arm, direction) + otherInverseMass);
+    const QPointF impulse = direction * lambda;
+    body.position += impulse * body.inverseMass;
+    body.angle += body.inverseInertia * cross(arm, impulse);
+    return lambda;
+}
+
 void applyImpulse(RigidBody &body, const QPointF &arm, const QPointF &impulse)
 {
     body.velocity += impulse * body.inverseMass;

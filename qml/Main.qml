@@ -126,6 +126,10 @@ Window {
         TerrainItem {
             game: controller
         }
+        Bridges {
+            anchors.fill: parent
+            game: controller
+        }
         FinishLine {
             base: controller.finishPos
         }
