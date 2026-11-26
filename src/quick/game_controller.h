@@ -56,7 +56,8 @@ public:
 
     // Which course the next GameController builds. Call before QML loads.
     // An empty path means a procedural course from the given seed.
-    static void setCourse(const QString &jsonPath, quint32 seed);
+    // startAtMetres > 0 spawns the car that far along the course.
+    static void setCourse(const QString &jsonPath, quint32 seed, double startAtMetres = 0.0);
 
     Q_INVOKABLE void tick(qreal frameTime);
     Q_INVOKABLE void restart();

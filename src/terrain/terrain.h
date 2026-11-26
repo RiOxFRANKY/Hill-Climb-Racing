@@ -46,6 +46,9 @@ public:
     // Build a 10 km course from the procedural generator. The same seed
     // always gives the same course.
     void generateCourse(quint32 seed);
+    // Start somewhere other than the course's own spawn point (world pixels).
+    // A point inside a ravine moves to its landing side.
+    void setSpawnX(double x);
 
     [[nodiscard]] const TerrainChain *chainAt(double x) const;
     [[nodiscard]] double chainHeight(const TerrainChain &chain, double x) const;

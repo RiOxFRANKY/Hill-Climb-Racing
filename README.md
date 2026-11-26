@@ -15,13 +15,22 @@ is a function of distance made from three layers of domain-warped sine waves:
 long swells, rolling hills and short bumps. Ten zones (Green Valley through
 Home Stretch) each set their own amplitudes, wavelengths and gradient, and
 neighbouring zones blend over 120 m. The course gets rougher the further you
-drive, and nine ravines have a flat run-up, a takeoff lip and a downhill
-landing. The ground is sampled every 0.25 m into the same chains the renderer
-and physics already use. A seed shifts every wave, so each seed is a different
+drive. On top of the waves, each zone places its own mix of set pieces:
+big hills (often steeper on one side), flat-topped mesas, deep valleys, runs
+of rollers, staircases of ledges and kicker ramps. Nine ravines have a flat
+run-up, a takeoff lip and a downhill landing. The ground is sampled every
+0.25 m into the same chains the renderer and physics already use. A seed
+shifts every wave and picks every set piece, so each seed is a different
 course and the same seed is always the same course.
 
 ```powershell
 .\build\HillClimbQt.exe --seed 42
+```
+
+To try a later zone straight away, start part-way along the course:
+
+```powershell
+.\build\HillClimbQt.exe --start-at 6900
 ```
 
 The hand-made "Grassland Gauntlet" course is still available:

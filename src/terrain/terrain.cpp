@@ -108,6 +108,14 @@ void TerrainManager::generateCourse(quint32 seed)
         m_sections.append({zone.start * scale, zone.end * scale, QString::fromStdString(zone.name)});
 }
 
+void TerrainManager::setSpawnX(double x)
+{
+    x = Physics::clampValue(x, 0.0, m_finishX - 400.0);
+    if (const TerrainGap *gap = gapAt(x))
+        x = gap->end + 200.0;
+    m_spawnX = x;
+}
+
 void TerrainManager::resetPickups(double spawnX)
 {
     m_pickups.clear();

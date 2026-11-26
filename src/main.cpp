@@ -44,13 +44,20 @@ int main(int argc, char *argv[])
         QStringLiteral("Drive a course from a JSON file instead, e.g. :/assets/terrain_10km.json."),
         QStringLiteral("file"));
     parser.addOption(courseOption);
+    QCommandLineOption startAtOption(
+        QStringLiteral("start-at"),
+        QStringLiteral("Start this many metres along the course, to try a later zone."),
+        QStringLiteral("metres"), QStringLiteral("0"));
+    parser.addOption(startAtOption);
     parser.process(app);
 
     bool seedOk = false;
     const quint32 seed = parser.value(seedOption).toUInt(&seedOk);
-    if (!seedOk)
+    bool startOk = false;
+    const double startAt = parser.value(startAtOption).toDouble(&startOk);
+    if (!seedOk || !startOk || startAt < 0.0)
         parser.showHelp(1);
-    GameController::setCourse(parser.value(courseOption), seed);
+    GameController::setCourse(parser.value(courseOption), seed, startAt);
 
 #ifdef Q_OS_ANDROID
     // The game is designed for a 16:9 landscape screen.

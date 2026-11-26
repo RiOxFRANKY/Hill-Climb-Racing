@@ -2,10 +2,17 @@
 
 // Procedural course generator.
 //
-// The ground is a pure function of distance: a few layers of domain-warped
-// sine waves whose amplitudes and wavelengths change from zone to zone, plus a
-// slow climb or descent per zone. A seed shifts the phase of every layer, so
-// each seed gives a different but fully reproducible course.
+// The ground is built from two parts, both pure functions of distance:
+//
+//  * Waves: a few layers of domain-warped sine waves (long swells, rolling
+//    hills, short bumps) plus a slow climb or descent per zone. They give the
+//    ground its constant, uneven texture.
+//  * Set pieces: separate shapes placed one after another along the course,
+//    such as big hills, mesas, valleys, rollers, ledges and kicker ramps. They
+//    give the course landmarks and moments that need throttle control.
+//
+// A seed shifts every wave and chooses every set piece, so each seed gives a
+// different but fully reproducible course.
 //
 // This file has no Qt dependency so the generator can be tested on its own.
 // Units are metres, x to the right and height up.
@@ -16,11 +23,8 @@
 
 namespace Terrain::Procedural {
 
-// How one zone of the course is shaped. Neighbouring zones blend into each
-// other over ZoneBlend metres, so the ground never jumps at a boundary.
-struct ZoneProfile {
-    std::string name;
-    double length = 1000.0;      // metres of course
+// The always-on wave layers of a zone.
+struct WaveProfile {
     double swellAmp = 0.0;       // long, gentle waves
     double swellLength = 300.0;  // their wavelength in metres
     double hillAmp = 0.0;        // ordinary rolling hills
@@ -28,8 +32,46 @@ struct ZoneProfile {
     double bumpAmp = 0.0;        // short bumps on top
     double bumpLength = 9.0;
     double warp = 0.0;           // how much the hills are bent out of a pure sine
-    double climb = 0.0;          // average gradient (metres up per metre forward)
-    int ravines = 0;             // jumps placed in this zone
+};
+
+// Which set pieces a zone uses, how big they are and how often they come.
+// The six weights are relative chances; zero leaves that kind out.
+struct FeatureProfile {
+    double spacing = 80.0;    // average plain ground between set pieces (m)
+    double size = 1.0;        // scales every set piece's height
+    double steepness = 0.6;   // steepest gradient a set piece aims for
+    double hill = 0.0;        // big hill, often steeper on one side
+    double mesa = 0.0;        // climb to a flat top, then back down
+    double valley = 0.0;      // a deep dip to drive through
+    double rollers = 0.0;     // a run of small humps
+    double steps = 0.0;       // a staircase of ledges, then a long descent
+    double kicker = 0.0;      // short ramp with a drop behind it
+};
+
+// One zone of the course. Neighbouring zones blend their waves into each other
+// over ZoneBlend metres, so the ground never jumps at a boundary.
+struct ZoneProfile {
+    std::string name;
+    double length = 1000.0;  // metres of course
+    double climb = 0.0;      // average gradient (metres up per metre forward)
+    int ravines = 0;         // jumps placed in this zone
+    WaveProfile waves;
+    FeatureProfile features;
+};
+
+enum class FeatureKind { Hill, Mesa, Valley, Rollers, Steps, Kicker };
+
+struct Feature {
+    FeatureKind kind = FeatureKind::Hill;
+    double start = 0.0;
+    double length = 0.0;
+    double height = 0.0;  // peak height, or depth for a valley
+    double a = 0.0;       // shape settings; their meaning depends on kind
+    double b = 0.0;
+    int count = 0;
+
+    [[nodiscard]] double end() const { return start + length; }
+    [[nodiscard]] double heightAt(double x) const;
 };
 
 struct Ravine {
@@ -55,6 +97,7 @@ struct Course {
     double finishX = 10000.0;
     std::vector<Chain> chains;  // solid ground, split at every ravine
     std::vector<Ravine> ravines;
+    std::vector<Feature> features;
     std::vector<Zone> zones;
 };
 
@@ -71,28 +114,34 @@ struct Settings {
 // The height of the ground before ravines are cut, at distance x.
 class HeightField {
 public:
-    explicit HeightField(const Settings &settings);
+    // Set pieces are kept clear of the given ravines.
+    HeightField(const Settings &settings, const std::vector<Ravine> &ravines);
 
     [[nodiscard]] double height(double x) const;
-    // The same ground with only the long swells, no hills or bumps. Used to
-    // calm the ground into a runway before and after a jump.
+    // The same ground with only the climb and the long swells. Used to calm
+    // the ground into a runway before and after a jump.
     [[nodiscard]] double heightWithoutDetail(double x) const;
     [[nodiscard]] double length() const { return m_length; }
+    [[nodiscard]] const std::vector<Feature> &features() const { return m_features; }
 
 private:
     struct Blend {
         double swellAmp, swellLength, hillAmp, hillLength, bumpAmp, bumpLength, warp;
     };
+    [[nodiscard]] double zoneWeight(std::size_t zone, double x) const;
     [[nodiscard]] Blend blendAt(double x) const;
     [[nodiscard]] double climbAt(double x) const;
     [[nodiscard]] double envelope(double x) const;
     [[nodiscard]] double swellWave(double x, const Blend &b) const;
     [[nodiscard]] double detailWave(double x, const Blend &b) const;
+    [[nodiscard]] double featureHeight(double x) const;
+    void placeFeatures(const std::vector<Ravine> &ravines);
 
     Settings m_settings;
     std::vector<double> m_zoneStart;
     std::vector<double> m_trend;  // integrated climb, one value per metre
     std::vector<double> m_swellPhase, m_hillPhase, m_bumpPhase;
+    std::vector<Feature> m_features;  // sorted by start, never overlapping
     double m_length = 0.0;
     double m_phase[6] = {};
 };

@@ -10,12 +10,14 @@ using namespace Physics;
 namespace {
 QString s_courseJson;
 quint32 s_courseSeed = 1;
+double s_startAtMetres = 0.0;
 } // namespace
 
-void GameController::setCourse(const QString &jsonPath, quint32 seed)
+void GameController::setCourse(const QString &jsonPath, quint32 seed, double startAtMetres)
 {
     s_courseJson = jsonPath;
     s_courseSeed = seed;
+    s_startAtMetres = startAtMetres;
 }
 
 GameController::GameController(QObject *parent)
@@ -25,6 +27,8 @@ GameController::GameController(QObject *parent)
         m_core.generateCourse(s_courseSeed);
     else
         m_core.loadCourse(s_courseJson);
+    if (s_startAtMetres > 0.0)
+        m_core.terrain().setSpawnX(s_startAtMetres * m_core.terrain().pixelsPerMetre());
     m_core.resetGame();
 }
 
