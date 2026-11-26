@@ -15,6 +15,7 @@ struct Pickup {
     Type type = Type::Coin;
     QPointF position;
     bool collected = false;
+    int value = 0;  // coins only: 5, 25, 100 or 500
 };
 
 struct TerrainChain {
@@ -43,9 +44,10 @@ public:
     TerrainManager() = default;
 
     void loadCourse(const QString &resourcePath = QStringLiteral(":/assets/terrain_10km.json"));
-    // Build a 10 km course from the procedural generator. The same seed
-    // always gives the same course.
-    void generateCourse(quint32 seed);
+    // Build a 10 km course from the procedural generator for one of the five
+    // maps (0 = Grazing the Grass ... 4 = The Real Excursion, each harder than
+    // the last). The same seed and map always give the same course.
+    void generateCourse(quint32 seed, int map = 0);
     // Start somewhere other than the course's own spawn point (world pixels).
     // A point inside a ravine moves to its landing side.
     void setSpawnX(double x);
@@ -83,8 +85,13 @@ private:
     QVector<CourseSection> m_sections;
     QVector<Pickup> m_pickups;
 
-    double m_nextPickupX = 0.0;
-    double m_nextFuelX = 0.0;
+    // Where the fuel can after one at x goes, once budget "flat metres" of
+    // fuel are used up; see FuelBudget in terrain.cpp.
+    [[nodiscard]] double nextFuelX(double from, double budget) const;
+
+    double m_nextPickupX = 0.0;  // where the next coin group may start
+    double m_nextFuelX = 0.0;    // where the next fuel can goes
+    qint64 m_coinGroup = 0;      // counts coin groups, to vary them
 };
 
 } // namespace Terrain

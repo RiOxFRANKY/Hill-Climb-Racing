@@ -54,6 +54,12 @@ int main(int argc, char *argv[])
         QStringLiteral("Open the start menu on this page: main, mode or map."),
         QStringLiteral("page"), QStringLiteral("main"));
     parser.addOption(menuPageOption);
+    QCommandLineOption mapOption(
+        QStringLiteral("map"),
+        QStringLiteral("Start on this map: 1 Grazing the Grass (default), 2 Beachday, 3 Swampy Vibe, "
+                       "4 Arctic Elegance, 5 The Real Excursion."),
+        QStringLiteral("number"), QStringLiteral("1"));
+    parser.addOption(mapOption);
     parser.process(app);
 
     bool seedOk = false;
@@ -61,10 +67,12 @@ int main(int argc, char *argv[])
     bool startOk = false;
     const double startAt = parser.value(startAtOption).toDouble(&startOk);
     const QString menuPage = parser.value(menuPageOption);
-    if (!seedOk || !startOk || startAt < 0.0
+    bool mapOk = false;
+    const int map = parser.value(mapOption).toInt(&mapOk);
+    if (!seedOk || !startOk || startAt < 0.0 || !mapOk || map < 1 || map > 5
         || !QStringList{QStringLiteral("main"), QStringLiteral("mode"), QStringLiteral("map")}.contains(menuPage))
         parser.showHelp(1);
-    GameController::setCourse(parser.value(courseOption), seed, startAt);
+    GameController::setCourse(parser.value(courseOption), seed, startAt, map - 1);
 
 #ifdef Q_OS_ANDROID
     // The game is designed for a 16:9 landscape screen.

@@ -1,4 +1,5 @@
 #include "game_controller.h"
+#include "../terrain/procedural.h"
 
 #include <QVariantMap>
 
@@ -11,25 +12,62 @@ namespace {
 QString s_courseJson;
 quint32 s_courseSeed = 1;
 double s_startAtMetres = 0.0;
+int s_startMap = 0;
 } // namespace
 
-void GameController::setCourse(const QString &jsonPath, quint32 seed, double startAtMetres)
+void GameController::setCourse(const QString &jsonPath, quint32 seed, double startAtMetres, int map)
 {
     s_courseJson = jsonPath;
     s_courseSeed = seed;
     s_startAtMetres = startAtMetres;
+    s_startMap = std::clamp(map, 0, Terrain::Procedural::Settings::MapCount - 1);
 }
 
 GameController::GameController(QObject *parent)
     : QObject(parent)
+    , m_map(s_startMap)
 {
-    if (s_courseJson.isEmpty())
-        m_core.generateCourse(s_courseSeed);
-    else
-        m_core.loadCourse(s_courseJson);
+    buildCourse();
     if (s_startAtMetres > 0.0)
         m_core.terrain().setSpawnX(s_startAtMetres * m_core.terrain().pixelsPerMetre());
     m_core.resetGame();
+}
+
+void GameController::buildCourse()
+{
+    if (m_map == 0 && !s_courseJson.isEmpty())
+        m_core.loadCourse(s_courseJson);
+    else
+        m_core.generateCourse(s_courseSeed, m_map);
+}
+
+void GameController::selectMap(int map)
+{
+    map = std::clamp(map, 0, Terrain::Procedural::Settings::MapCount - 1);
+    if (map == m_map)
+        return;
+    m_map = map;
+    buildCourse();
+    m_core.resetGame();
+    emit courseChanged();
+    emit frameChanged();
+}
+
+QString GameController::mapSummary(int map) const
+{
+    // Read from the map's settings, so the menu needn't build every course.
+    const Terrain::Procedural::Settings settings = Terrain::Procedural::Settings::forMap(map, s_courseSeed);
+    double length = 0.0;
+    int ravines = 0;
+    for (const Terrain::Procedural::ZoneProfile &zone : settings.zones) {
+        length += zone.length;
+        ravines += zone.ravines;
+    }
+    return QStringLiteral("%1 KM   •   %2 RAVINES   •   DIFFICULTY %3 / %4")
+        .arg(length / 1000.0)
+        .arg(ravines)
+        .arg(std::clamp(map, 0, Terrain::Procedural::Settings::MapCount - 1) + 1)
+        .arg(Terrain::Procedural::Settings::MapCount);
 }
 
 void GameController::tick(qreal frameTime)
@@ -158,6 +196,7 @@ QVariantList GameController::pickups() const
             {QStringLiteral("x"), centre.x()},
             {QStringLiteral("y"), centre.y()},
             {QStringLiteral("fuel"), pickup.type == Terrain::Pickup::Type::Fuel},
+            {QStringLiteral("value"), pickup.value},
             {QStringLiteral("phase"), pickup.position.x()},
         });
     }

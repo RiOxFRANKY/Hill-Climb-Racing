@@ -10,9 +10,9 @@ void GameCore::loadCourse(const QString &resourcePath)
     m_terrain.loadCourse(resourcePath);
 }
 
-void GameCore::generateCourse(quint32 seed)
+void GameCore::generateCourse(quint32 seed, int map)
 {
-    m_terrain.generateCourse(seed);
+    m_terrain.generateCourse(seed, map);
 }
 
 void GameCore::resetGame()
@@ -106,8 +106,13 @@ void GameCore::updatePhysics(double dt)
     for (int i = 0; i < Physics::PhysicsSubsteps; ++i)
         m_vehicle.stepPhysics(h, throttle, boost, m_terrain);
 
-    if (throttle != 0.0 && m_vehicle.fuel() > 0.0) {
-        m_vehicle.consumeFuel(dt * (boost ? 2.25 : 0.82));
+    // The engine burns fuel the whole time, so stopping or crawling still
+    // costs fuel. Per second, as a percentage of the tank: 1.0 idling, 2.4
+    // on the gas (about 42 s, or 580 m at the car's usual 14 m/s), 4.0
+    // boosting (more fuel per metre than plain gas).
+    if (m_vehicle.fuel() > 0.0) {
+        const double burn = boost && throttle > 0.0 ? 4.0 : throttle != 0.0 ? 2.4 : 1.0;
+        m_vehicle.consumeFuel(dt * burn);
     }
 
     if (m_vehicle.chassis().position.x() < 250.0) {
@@ -148,7 +153,8 @@ void GameCore::updatePhysics(double dt)
     }
 
     const double metres = std::max(0.0, m_vehicle.chassis().position.x()) / m_terrain.pixelsPerMetre();
-    m_score = std::max(m_score, static_cast<int>(metres * 2.5) + m_coins * 100);
+    // m_coins is the total value of the coins collected, not how many.
+    m_score = std::max(m_score, static_cast<int>(metres * 2.5) + m_coins);
 }
 
 void GameCore::handleKeyPress(int key)

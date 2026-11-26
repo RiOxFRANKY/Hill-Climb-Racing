@@ -48,8 +48,20 @@ The game opens on a start menu. Use `Up`/`Down` (or `W`/`S`) and `Enter`, or
 the mouse, to pick **Play**, **Garage**, **Controls** or **Quit**. **Play**
 leads to a mode (**Normal**, **Rescue**, **Race**) and then, for Normal, a map:
 **Grazing the Grass**, **Beachday**, **Swampy Vibe**, **Arctic Elegance** or
-**The Real Excursion**. Only Normal on Grazing the Grass can be played so far;
-the others are marked *SOON*. `Esc` steps back a page.
+**The Real Excursion**. All five maps can be played in Normal mode; Garage,
+Rescue and Race are marked *SOON*. `Esc` steps back a page.
+
+Each map is harder than the one above it. They share the same artwork, but
+each has its own zone names and course, and the ground gets bigger and
+bumpier, set pieces get larger, steeper and closer together (with more ledges
+and kicker ramps), the climbs get longer, and ravines become more frequent
+and wider: 9 jumps up to 11 m on the first two maps, 17 on the next two, and
+25 up to about 14 m on The Real Excursion. To start straight on a map, pass
+its number (1 to 5):
+
+```powershell
+.\build\HillClimbQt.exe --map 5
+```
 
 - `D` or `Right Arrow`: accelerate / rotate clockwise in the air
 - `A` or `Left Arrow`: brake, reverse / rotate counter-clockwise in the air
@@ -64,8 +76,19 @@ On a touch screen, hold the on-screen **Brake**, **Boost** and **Gas** pedals
 (several at once is fine), and tap **P Pause**, **R Restart** or **Esc Menu**
 in the bar at the top. Android's Back button works like `Esc`.
 
-Collect coins for points and red fuel cans to refill the tank. Reach the
-finish line at 10,000 m.
+The engine burns fuel the whole time you race: slowly when idling, faster on
+the gas and fastest while boosting. A full tank lasts about 42 s on the gas,
+roughly 580 m of flat ground at the car's usual speed. Red fuel cans refill
+it. Their spacing follows the terrain: a can comes sooner after climbs and
+bumpy stretches and later after downhills, so on the gas you reach each one
+with about 10-20% of the tank left. Cans and coins are always in the same
+places on a given course.
+
+Coins come in groups of 5 to 8, worth 5, 25, 100 or 500 each, in a row that
+follows the ground. Bigger values turn up further along the course, and the
+larger coins show their value. The
+coin counter is the total value collected, and it adds to your score along
+with 2.5 points per metre. Reach the finish line at 10,000 m.
 
 ## Build on this machine
 

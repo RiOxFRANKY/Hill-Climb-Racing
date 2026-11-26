@@ -106,9 +106,18 @@ struct Settings {
     double step = 0.25;
     double startFlat = 25.0;   // flat run-up at the start
     double finishFlat = 50.0;  // flat run-out before the finish
+    double ravineMinWidth = 7.0;
+    double ravineMaxWidth = 11.0;
     std::vector<ZoneProfile> zones = defaultZones();
 
     static std::vector<ZoneProfile> defaultZones();
+
+    // The five maps, from 0 (Grazing the Grass, the default zones above) to 4
+    // (The Real Excursion). Each map renames the zones and makes the ground
+    // harder than the map before it. The seed also differs per map, so the
+    // same --seed gives five different courses.
+    static constexpr int MapCount = 5;
+    static Settings forMap(int map, std::uint32_t seed);
 };
 
 // The height of the ground before ravines are cut, at distance x.

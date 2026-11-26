@@ -8,6 +8,7 @@ Item {
     id: root
 
     property string courseSummary
+    property var mapSummaries: []  // one line per map, shown under the buttons
     property string page: "main"
     property int selected: 0
     property bool showingControls: false
@@ -41,11 +42,12 @@ Item {
             heading: "CHOOSE A MAP",
             back: "mode",
             items: [
-                { label: "GRAZING THE GRASS", action: "play", hint: root.courseSummary },
-                { label: "BEACHDAY", locked: true },
-                { label: "SWAMPY VIBE", locked: true },
-                { label: "ARCTIC ELEGANCE", locked: true },
-                { label: "THE REAL EXCURSION", locked: true },
+                // Each map is harder than the one above it.
+                { label: "GRAZING THE GRASS", action: "play", map: 0, hint: root.mapSummaries[0] },
+                { label: "BEACHDAY", action: "play", map: 1, hint: root.mapSummaries[1] },
+                { label: "SWAMPY VIBE", action: "play", map: 2, hint: root.mapSummaries[2] },
+                { label: "ARCTIC ELEGANCE", action: "play", map: 3, hint: root.mapSummaries[3] },
+                { label: "THE REAL EXCURSION", action: "play", map: 4, hint: root.mapSummaries[4] },
                 { label: "BACK", action: "back" },
             ]
         },
@@ -56,7 +58,7 @@ Item {
     // Longer lists get slimmer, wider buttons so six fit above the footer.
     readonly property bool compact: items.length > 4
 
-    signal playRequested()
+    signal playRequested(int map)
     signal quitRequested()
 
     function reset() {
@@ -99,7 +101,7 @@ Item {
         case "map": openPage("map"); break
         case "back": goBack(); break
         case "controls": showingControls = true; break
-        case "play": playRequested(); break
+        case "play": playRequested(item.map); break
         case "quit": quitRequested(); break
         }
     }

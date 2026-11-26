@@ -13,7 +13,7 @@ public:
     GameCore() = default;
 
     void loadCourse(const QString &resourcePath = QStringLiteral(":/assets/terrain_10km.json"));
-    void generateCourse(quint32 seed);
+    void generateCourse(quint32 seed, int map = 0);
     void resetGame();
     void tick(double frameTime);
     void updatePhysics(double dt);

@@ -87,6 +87,57 @@ std::vector<ZoneProfile> Settings::defaultZones()
     };
 }
 
+Settings Settings::forMap(int map, std::uint32_t seed)
+{
+    static const char *const zoneNames[MapCount][10] = {
+        {},  // map 0 keeps the default names
+        {"SANDY START", "DUNE DRIFT", "PALM POINT", "SHELL SHALLOWS", "TIDE SWELLS",
+         "ROCKPOOL GAPS", "CLIFF COVE", "LIGHTHOUSE HILL", "DRIFTWOOD RUN", "SUNSET STRAND"},
+        {"MOSSY MOUTH", "REED BEDS", "FROG HOLLOW", "BOG BUMPS", "MIRE SWELLS",
+         "SINKHOLE STRETCH", "GNARLED RIDGE", "HERON HEIGHTS", "MUDSLIDE LANE", "LANTERN BAYOU"},
+        {"FROST GATE", "SNOWDRIFT FIELDS", "PINE GLACIER", "ICICLE STEPS", "AURORA SWELLS",
+         "CREVASSE JUMPS", "BLIZZARD RIDGE", "SUMMIT SHELF", "AVALANCHE ALLEY", "POLAR FINISH"},
+        {"BASE CAMP", "SWITCHBACKS", "BOULDER CLIMB", "GRAVEL CHUTES", "THE BIG SWELL",
+         "CANYON LEAPS", "KNIFE EDGE", "CLOUD SHELF", "THE GAUNTLET", "LAST DESCENT"},
+    };
+
+    map = std::clamp(map, 0, MapCount - 1);
+    const double d = map;  // 0 = easiest, 4 = hardest
+
+    Settings settings;
+    settings.seed = seed + static_cast<std::uint32_t>(map) * 7919u;
+    // Wider ravines on harder maps.
+    settings.ravineMinWidth = 7.0 + 0.6 * d;
+    settings.ravineMaxWidth = 11.0 + 0.8 * d;
+
+    for (std::size_t i = 0; i < settings.zones.size(); ++i) {
+        ZoneProfile &zone = settings.zones[i];
+        if (map > 0)
+            zone.name = zoneNames[map][i];
+
+        // Bigger, bumpier, more twisted ground.
+        zone.waves.swellAmp *= 1.0 + 0.10 * d;
+        zone.waves.hillAmp *= 1.0 + 0.12 * d;
+        zone.waves.bumpAmp *= 1.0 + 0.18 * d;
+        zone.waves.warp += 0.1 * d;
+        zone.climb *= 1.0 + 0.25 * d;
+
+        // Larger, steeper set pieces, closer together, with more ledges and
+        // kicker ramps in the mix.
+        FeatureProfile &f = zone.features;
+        f.size *= 1.0 + 0.12 * d;
+        f.steepness = std::min(0.82, f.steepness + 0.05 * d);
+        f.spacing = std::max(20.0, f.spacing * (1.0 - 0.1 * d));
+        f.steps += 0.3 * d;
+        f.kicker += 0.5 * d;
+
+        // From the third map on, every zone after the first two gets more jumps.
+        if (i >= 2)
+            zone.ravines += map / 2;
+    }
+    return settings;
+}
+
 double Feature::heightAt(double x) const
 {
     const double xr = x - start;
@@ -377,7 +428,7 @@ Course generate(const Settings &settings)
         for (int k = 0; k < zone.ravines && usable > 0.0; ++k) {
             const double slot = usable / zone.ravines;
             const double centre = start + 120.0 + slot * (k + 0.5) + rng.range(-0.25, 0.25) * slot;
-            const double width = rng.range(7.0, 11.0);
+            const double width = rng.range(settings.ravineMinWidth, settings.ravineMaxWidth);
             const double takeoff = std::round(centre / course.step) * course.step;
             const double landing = takeoff + std::round(width / course.step) * course.step;
             course.ravines.push_back({takeoff, landing});

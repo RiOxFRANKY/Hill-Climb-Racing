@@ -46,7 +46,8 @@ class GameController : public QObject
     Q_PROPERTY(QString sectionRange READ sectionRange NOTIFY frameChanged)
     Q_PROPERTY(QString stageText READ stageText NOTIFY frameChanged)
     Q_PROPERTY(qreal zoneBannerTime READ zoneBannerTime NOTIFY frameChanged)
-    Q_PROPERTY(QString courseSummary READ courseSummary CONSTANT)
+    Q_PROPERTY(QString courseSummary READ courseSummary NOTIFY courseChanged)
+    Q_PROPERTY(int map READ map NOTIFY courseChanged)
 
 public:
     static constexpr int DesignWidth = 1920;
@@ -55,9 +56,16 @@ public:
     explicit GameController(QObject *parent = nullptr);
 
     // Which course the next GameController builds. Call before QML loads.
-    // An empty path means a procedural course from the given seed.
-    // startAtMetres > 0 spawns the car that far along the course.
-    static void setCourse(const QString &jsonPath, quint32 seed, double startAtMetres = 0.0);
+    // map is 0 (Grazing the Grass) to 4 (The Real Excursion). A non-empty
+    // jsonPath replaces map 0 with that course. startAtMetres > 0 spawns the
+    // car that far along the first course.
+    static void setCourse(const QString &jsonPath, quint32 seed, double startAtMetres = 0.0, int map = 0);
+
+    // Switches to another map and resets the race; does nothing if it is
+    // already the current map.
+    Q_INVOKABLE void selectMap(int map);
+    // One-line description of a map for the menu, e.g. its jumps and difficulty.
+    Q_INVOKABLE QString mapSummary(int map) const;
 
     Q_INVOKABLE void tick(qreal frameTime);
     Q_INVOKABLE void restart();
@@ -104,13 +112,18 @@ public:
     [[nodiscard]] QString stageText() const;
     [[nodiscard]] qreal zoneBannerTime() const { return m_core.zoneBannerTime(); }
     [[nodiscard]] QString courseSummary() const;
+    [[nodiscard]] int map() const { return m_map; }
 
 signals:
     void frameChanged();
+    void courseChanged();
 
 private:
+    void buildCourse();
+
     [[nodiscard]] QPointF worldToScreen(const QPointF &world) const;
     [[nodiscard]] const Terrain::CourseSection *currentSection() const;
 
     Core::GameCore m_core;
+    int m_map = 0;
 };

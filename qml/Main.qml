@@ -33,9 +33,13 @@ Window {
         controller.restart()
     }
 
-    function startGame() {
+    function startGame(map) {
         inMenu = false
-        controller.restart()
+        // Switching maps builds the new course; the same map just restarts.
+        if (map !== undefined && map !== controller.map)
+            controller.selectMap(map)
+        else
+            controller.restart()
     }
 
     function toggleFullScreen() {
@@ -174,7 +178,8 @@ Window {
             visible: window.inMenu
             enabled: window.inMenu
             courseSummary: controller.courseSummary
-            onPlayRequested: window.startGame()
+            mapSummaries: [0, 1, 2, 3, 4].map(i => controller.mapSummary(i))
+            onPlayRequested: map => window.startGame(map)
             onQuitRequested: Qt.quit()
         }
 
