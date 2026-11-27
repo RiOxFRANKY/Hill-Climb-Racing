@@ -6,6 +6,16 @@ Item {
 
     required property GameController game
 
+    readonly property var themePrefixes: [
+        "",         // 0: grassland
+        "beach/",   // 1: beach
+        "swamp/",   // 2: swamp
+        "snow/",    // 3: snow
+        "moon/"     // 4: moon
+    ]
+    readonly property string prefix: (root.game && root.game.map >= 0 && root.game.map < themePrefixes.length)
+                                     ? themePrefixes[root.game.map] : ""
+
     component Wheel: Image {
         required property point position
         required property real angle
@@ -16,7 +26,7 @@ Item {
         width: radius * 2
         height: radius * 2
         rotation: angle
-        source: "qrc:/assets/wheel.png"
+        source: "qrc:/assets/" + root.prefix + "wheel.png"
         smooth: false
     }
 
@@ -39,7 +49,7 @@ Item {
         y: root.game.chassisPos.y + offset.y
         width: implicitWidth * root.game.carSpriteScale
         height: implicitHeight * root.game.carSpriteScale
-        source: "qrc:/assets/car_body.png"
+        source: "qrc:/assets/" + root.prefix + "car_body.png"
         smooth: false
         transform: Rotation {
             origin.x: -body.offset.x

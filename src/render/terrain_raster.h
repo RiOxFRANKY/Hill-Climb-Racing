@@ -15,6 +15,6 @@ struct TerrainRaster {
 };
 
 [[nodiscard]] TerrainRaster rasterizeTerrain(const Terrain::TerrainManager &terrain, double cameraX, double cameraY,
-                                             int designWidth, int designHeight);
+                                             int designWidth, int designHeight, int map = 0);
 
 } // namespace Render

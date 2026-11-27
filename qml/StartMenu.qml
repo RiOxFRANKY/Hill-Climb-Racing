@@ -42,12 +42,12 @@ Item {
             heading: "CHOOSE A MAP",
             back: "mode",
             items: [
-                // Each map is harder than the one above it.
-                { label: "GRAZING THE GRASS", action: "play", map: 0, hint: root.mapSummaries[0] },
-                { label: "BEACHDAY", action: "play", map: 1, hint: root.mapSummaries[1] },
-                { label: "SWAMPY VIBE", action: "play", map: 2, hint: root.mapSummaries[2] },
-                { label: "ARCTIC ELEGANCE", action: "play", map: 3, hint: root.mapSummaries[3] },
-                { label: "THE REAL EXCURSION", action: "play", map: 4, hint: root.mapSummaries[4] },
+                // Each map is harder than the one above it with bespoke terrain material & parallax.
+                { label: "GRAZING THE GRASS", action: "play", map: 0, icon: "qrc:/assets/ui/map_icon_grassland.png", hint: root.mapSummaries[0] },
+                { label: "BEACHDAY", action: "play", map: 1, icon: "qrc:/assets/ui/map_icon_beach.png", hint: root.mapSummaries[1] },
+                { label: "SWAMPY VIBE", action: "play", map: 2, icon: "qrc:/assets/ui/map_icon_swamp.png", hint: root.mapSummaries[2] },
+                { label: "ARCTIC ELEGANCE", action: "play", map: 3, icon: "qrc:/assets/ui/map_icon_snow.png", hint: root.mapSummaries[3] },
+                { label: "THE REAL EXCURSION", action: "play", map: 4, icon: "qrc:/assets/ui/map_icon_moon.png", hint: root.mapSummaries[4] },
                 { label: "BACK", action: "back" },
             ]
         },
@@ -255,10 +255,22 @@ Item {
                     color: Theme.rgb(8, 12, 16, 80)
                 }
 
+                Image {
+                    visible: button.modelData.icon !== undefined
+                    x: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: root.compact ? 52 : 60
+                    height: root.compact ? 52 : 60
+                    source: button.modelData.icon || ""
+                    smooth: false
+                }
+
                 ShadowText {
+                    x: button.modelData.icon !== undefined ? 80 : 0
                     y: button.isPressed ? 2 : 0
-                    width: button.width
+                    width: button.modelData.icon !== undefined ? button.width - 90 : button.width
                     height: button.height
+                    horizontalAlignment: button.modelData.icon !== undefined ? Text.AlignLeft : Text.AlignHCenter
                     text: button.modelData.label
                     font: Theme.pixelFont(root.compact ? 15 : 18)
                     color: button.locked ? Theme.rgb(150, 154, 162)
@@ -319,6 +331,65 @@ Item {
                     height: halfHeight * 2
                     color: outline ? Theme.rgb(8, 12, 16) : Theme.rgb(255, 210, 50)
                 }
+            }
+        }
+
+        // Map Terrain Preview Badge when on the map selection page
+        Item {
+            visible: root.page === "map" && root.selectedItem && root.selectedItem.icon !== undefined
+            x: 960 + 265
+            y: 384
+            width: 220
+            height: 270
+
+            Rectangle {
+                anchors.fill: parent
+                color: Theme.rgb(8, 12, 16, 230)
+                border.color: Theme.rgb(255, 210, 50)
+                border.width: 3
+                radius: 12
+            }
+
+            Image {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 18
+                width: 148
+                height: 148
+                source: root.selectedItem ? (root.selectedItem.icon || "") : ""
+                smooth: false
+            }
+
+            ShadowText {
+                y: 176
+                width: parent.width
+                height: 28
+                text: "TERRAIN MATERIAL"
+                font: Theme.pixelFont(10)
+                color: Theme.rgb(255, 210, 50)
+                shadowX: 2
+                shadowY: 2
+            }
+
+            ShadowText {
+                y: 206
+                width: parent.width
+                height: 28
+                text: root.selectedItem ? root.selectedItem.label : ""
+                font: Theme.uiFont(11)
+                color: Theme.rgb(220, 230, 245)
+                shadowX: 2
+                shadowY: 2
+            }
+
+            ShadowText {
+                y: 234
+                width: parent.width
+                height: 24
+                text: "PRESS ENTER TO PLAY"
+                font: Theme.uiFont(9)
+                color: Theme.rgb(150, 215, 120)
+                shadowX: 2
+                shadowY: 2
             }
         }
 

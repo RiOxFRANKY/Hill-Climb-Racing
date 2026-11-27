@@ -32,6 +32,7 @@ private:
 
     QPointer<GameController> m_game;
     QMetaObject::Connection m_frameConnection;
+    QMetaObject::Connection m_courseConnection;
     QImage m_image;
     bool m_imageDirty = false;
 };

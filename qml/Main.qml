@@ -122,6 +122,7 @@ Window {
         Background {
             anchors.fill: parent
             cameraX: controller.cameraX
+            map: controller.map
         }
         TerrainItem {
             game: controller

@@ -16,9 +16,12 @@ void TerrainItem::setGame(GameController *game)
     if (m_game == game)
         return;
     disconnect(m_frameConnection);
+    disconnect(m_courseConnection);
     m_game = game;
-    if (m_game)
+    if (m_game) {
         m_frameConnection = connect(m_game, &GameController::frameChanged, this, &TerrainItem::refresh);
+        m_courseConnection = connect(m_game, &GameController::courseChanged, this, &TerrainItem::refresh);
+    }
     refresh();
     emit gameChanged();
 }
@@ -29,7 +32,8 @@ void TerrainItem::refresh()
         return;
     const Core::GameCore &core = m_game->core();
     Render::TerrainRaster raster = Render::rasterizeTerrain(core.terrain(), core.cameraX(), core.cameraY(),
-                                                            GameController::DesignWidth, GameController::DesignHeight);
+                                                            GameController::DesignWidth, GameController::DesignHeight,
+                                                            m_game->map());
     setPosition(raster.placement.topLeft());
     setSize(raster.placement.size());
     m_image = std::move(raster.image);
