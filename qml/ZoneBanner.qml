@@ -19,6 +19,61 @@ Item {
     readonly property var pose: poseAt(elapsed)
     readonly property real swingRadians: pose.swing * Math.PI / 180
 
+    readonly property var themeStyles: [
+        // 0: Grassland (default rustic wood & iron chains)
+        {
+            boardSource: "qrc:/assets/ui/wooden_board.png",
+            linkSource: "qrc:/assets/ui/chain_link.png",
+            rangeColor: Theme.rgb(245, 220, 160),
+            rangeShadowColor: Theme.rgb(25, 12, 6, 230),
+            titleColor: Theme.rgb(255, 210, 50),
+            titleShadowColor: Theme.rgb(25, 12, 6, 240),
+            shadowY: 2
+        },
+        // 1: Beach (driftwood with algae, coral, and braided ropes)
+        {
+            boardSource: "qrc:/assets/ui/wooden_board_beach.png",
+            linkSource: "qrc:/assets/ui/chain_link_beach.png",
+            rangeColor: Theme.rgb(255, 248, 224),
+            rangeShadowColor: Theme.rgb(44, 22, 8, 245),
+            titleColor: Theme.rgb(44, 24, 10),
+            titleShadowColor: Theme.rgb(255, 236, 196, 170),
+            shadowY: 1
+        },
+        // 2: Swamp (dark rusted iron plate & rusty chains)
+        {
+            boardSource: "qrc:/assets/ui/wooden_board_swamp.png",
+            linkSource: "qrc:/assets/ui/chain_link_swamp.png",
+            rangeColor: Theme.rgb(186, 218, 164),
+            rangeShadowColor: Theme.rgb(8, 12, 8, 245),
+            titleColor: Theme.rgb(220, 240, 120),
+            titleShadowColor: Theme.rgb(8, 12, 8, 250),
+            shadowY: 2
+        },
+        // 3: Snow / Arctic (dark timber with snow cap & frosted chains, white text)
+        {
+            boardSource: "qrc:/assets/ui/wooden_board_snow.png",
+            linkSource: "qrc:/assets/ui/chain_link_snow.png",
+            rangeColor: Theme.rgb(180, 228, 255),
+            rangeShadowColor: Theme.rgb(10, 16, 28, 245),
+            titleColor: Theme.rgb(255, 255, 255),
+            titleShadowColor: Theme.rgb(10, 16, 28, 250),
+            shadowY: 2
+        },
+        // 4: Moon (titanium spacecraft plate & sturdy modern chains)
+        {
+            boardSource: "qrc:/assets/ui/wooden_board_moon.png",
+            linkSource: "qrc:/assets/ui/chain_link_moon.png",
+            rangeColor: Theme.rgb(46, 86, 140),
+            rangeShadowColor: Theme.rgb(255, 255, 255, 180),
+            titleColor: Theme.rgb(20, 34, 62),
+            titleShadowColor: Theme.rgb(255, 255, 255, 200),
+            shadowY: 1
+        }
+    ]
+    readonly property var themeStyle: (game.map >= 0 && game.map < themeStyles.length)
+                                      ? themeStyles[game.map] : themeStyles[0]
+
     visible: game.zoneBannerTime > 0 && game.sectionName !== "" && pose.y >= startCenterY - 20
 
     function clamp(value, minimum, maximum) {
@@ -47,8 +102,8 @@ Item {
         return Qt.point(centerX + ex * c - ey * s, pose.y + ex * s + ey * c)
     }
 
-    Chain { target: root.eyelet(-1) }
-    Chain { target: root.eyelet(1) }
+    Chain { target: root.eyelet(-1); linkSource: root.themeStyle.linkSource }
+    Chain { target: root.eyelet(1); linkSource: root.themeStyle.linkSource }
 
     Item {
         x: root.centerX
@@ -61,7 +116,7 @@ Item {
             y: -root.boardHeight / 2
             width: root.boardWidth
             height: root.boardHeight
-            source: "qrc:/assets/ui/wooden_board.png"
+            source: root.themeStyle.boardSource
             smooth: false
         }
 
@@ -72,10 +127,10 @@ Item {
             height: 26
             text: root.game.sectionRange
             font: Theme.uiFont(12)
-            color: Theme.rgb(245, 220, 160)
-            shadowColor: Theme.rgb(25, 12, 6, 230)
+            color: root.themeStyle.rangeColor
+            shadowColor: root.themeStyle.rangeShadowColor
             shadowX: 0
-            shadowY: 2
+            shadowY: root.themeStyle.shadowY
         }
 
         ShadowText {
@@ -85,10 +140,10 @@ Item {
             height: 46
             text: root.game.sectionName
             font: Theme.pixelFont(17)
-            color: Theme.rgb(255, 210, 50)
-            shadowColor: Theme.rgb(25, 12, 6, 240)
+            color: root.themeStyle.titleColor
+            shadowColor: root.themeStyle.titleShadowColor
             shadowX: 0
-            shadowY: 2
+            shadowY: root.themeStyle.shadowY
         }
     }
 }

@@ -5,6 +5,7 @@ Item {
     id: root
 
     property point target
+    property url linkSource: "qrc:/assets/ui/chain_link.png"
 
     Repeater {
         model: Math.max(0, Math.ceil((root.target.y + 15) / 26))
@@ -15,7 +16,7 @@ Item {
             y: -15 + index * 26
             width: 16
             height: 32
-            source: "qrc:/assets/ui/chain_link.png"
+            source: root.linkSource
             smooth: false
         }
     }

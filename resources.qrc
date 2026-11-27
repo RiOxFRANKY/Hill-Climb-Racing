@@ -20,6 +20,14 @@
         <file alias="ui/speedometer_needle.png">assets/ui/speedometer_needle.png</file>
         <file alias="ui/wooden_board.png">assets/ui/wooden_board.png</file>
         <file alias="ui/chain_link.png">assets/ui/chain_link.png</file>
+        <file alias="ui/wooden_board_beach.png">assets/ui/wooden_board_beach.png</file>
+        <file alias="ui/chain_link_beach.png">assets/ui/chain_link_beach.png</file>
+        <file alias="ui/wooden_board_swamp.png">assets/ui/wooden_board_swamp.png</file>
+        <file alias="ui/chain_link_swamp.png">assets/ui/chain_link_swamp.png</file>
+        <file alias="ui/wooden_board_snow.png">assets/ui/wooden_board_snow.png</file>
+        <file alias="ui/chain_link_snow.png">assets/ui/chain_link_snow.png</file>
+        <file alias="ui/wooden_board_moon.png">assets/ui/wooden_board_moon.png</file>
+        <file alias="ui/chain_link_moon.png">assets/ui/chain_link_moon.png</file>
         <file alias="ui/coin.png">assets/ui/coin.png</file>
         <file alias="ui/coin_icon.png">assets/ui/coin_icon.png</file>
         <file alias="ui/hud_panel.png">assets/ui/hud_panel.png</file>
