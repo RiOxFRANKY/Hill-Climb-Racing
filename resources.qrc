@@ -7,7 +7,6 @@
         <file alias="bg_mountains.png">assets/bg_mountains.png</file>
         <file alias="bg_hills.png">assets/bg_hills.png</file>
         <file alias="terrain_10km.json">assets/terrain_10km.json</file>
-        <file alias="moon_terrain.json">assets/moon_terrain.json</file>
         <file alias="fonts/PressStart2P-Regular.ttf">assets/PressStart2P-Regular.ttf</file>
         <file alias="fonts/Silkscreen-Regular.ttf">assets/Silkscreen-Regular.ttf</file>
         <file alias="fonts/Silkscreen-Bold.ttf">assets/Silkscreen-Bold.ttf</file>
@@ -27,5 +26,81 @@
         <file alias="ui/dialog_box.png">assets/ui/dialog_box.png</file>
         <file alias="ui/dialog_button.png">assets/ui/dialog_button.png</file>
         <file alias="ui/dialog_button_pressed.png">assets/ui/dialog_button_pressed.png</file>
+
+        <!-- Grassland Theme -->
+        <file alias="grassland/background.png">assets/grassland/background.png</file>
+        <file alias="grassland/bg_sky.png">assets/grassland/bg_sky.png</file>
+        <file alias="grassland/bg_mountains.png">assets/grassland/bg_mountains.png</file>
+        <file alias="grassland/bg_hills.png">assets/grassland/bg_hills.png</file>
+        <file alias="grassland/terrain.png">assets/grassland/terrain.png</file>
+        <file alias="grassland/car_body.png">assets/grassland/car_body.png</file>
+        <file alias="grassland/wheel.png">assets/grassland/wheel.png</file>
+
+        <!-- Beach Theme -->
+        <file alias="beach/background.png">assets/beach/background.png</file>
+        <file alias="beach/bg_sky.png">assets/beach/bg_sky.png</file>
+        <file alias="beach/bg_mountains.png">assets/beach/bg_mountains.png</file>
+        <file alias="beach/bg_hills.png">assets/beach/bg_hills.png</file>
+        <file alias="beach/terrain.png">assets/beach/terrain.png</file>
+        <file alias="beach/car_body.png">assets/beach/car_body.png</file>
+        <file alias="beach/wheel.png">assets/beach/wheel.png</file>
+
+        <!-- Swamp Theme -->
+        <file alias="swamp/background.png">assets/swamp/background.png</file>
+        <file alias="swamp/bg_sky.png">assets/swamp/bg_sky.png</file>
+        <file alias="swamp/bg_mountains.png">assets/swamp/bg_mountains.png</file>
+        <file alias="swamp/bg_hills.png">assets/swamp/bg_hills.png</file>
+        <file alias="swamp/terrain.png">assets/swamp/terrain.png</file>
+        <file alias="swamp/car_body.png">assets/swamp/car_body.png</file>
+        <file alias="swamp/wheel.png">assets/swamp/wheel.png</file>
+
+        <!-- Snow / Arctic Theme -->
+        <file alias="snow/background.png">assets/snow/background.png</file>
+        <file alias="snow/bg_sky.png">assets/snow/bg_sky.png</file>
+        <file alias="snow/bg_mountains.png">assets/snow/bg_mountains.png</file>
+        <file alias="snow/bg_hills.png">assets/snow/bg_hills.png</file>
+        <file alias="snow/terrain.png">assets/snow/terrain.png</file>
+        <file alias="snow/car_body.png">assets/snow/car_body.png</file>
+        <file alias="snow/wheel.png">assets/snow/wheel.png</file>
+
+        <!-- Moon / Excursion Theme -->
+        <file alias="moon/background.png">assets/moon/background.png</file>
+        <file alias="moon/bg_sky.png">assets/moon/bg_sky.png</file>
+        <file alias="moon/bg_mountains.png">assets/moon/bg_mountains.png</file>
+        <file alias="moon/bg_hills.png">assets/moon/bg_hills.png</file>
+        <file alias="moon/terrain.png">assets/moon/terrain.png</file>
+        <file alias="moon/car_body.png">assets/moon/car_body.png</file>
+        <file alias="moon/wheel.png">assets/moon/wheel.png</file>
+
+        <!-- Map Terrain Icons -->
+        <file alias="ui/map_icon_grassland.png">assets/ui/map_icon_grassland.png</file>
+        <file alias="ui/map_icon_beach.png">assets/ui/map_icon_beach.png</file>
+        <file alias="ui/map_icon_swamp.png">assets/ui/map_icon_swamp.png</file>
+        <file alias="ui/map_icon_snow.png">assets/ui/map_icon_snow.png</file>
+        <file alias="ui/map_icon_moon.png">assets/ui/map_icon_moon.png</file>
+        <file alias="ui/map_icon_grassland_256.png">assets/ui/map_icon_grassland_256.png</file>
+        <file alias="ui/map_icon_beach_256.png">assets/ui/map_icon_beach_256.png</file>
+        <file alias="ui/map_icon_swamp_256.png">assets/ui/map_icon_swamp_256.png</file>
+        <file alias="ui/map_icon_snow_256.png">assets/ui/map_icon_snow_256.png</file>
+        <file alias="ui/map_icon_moon_256.png">assets/ui/map_icon_moon_256.png</file>
+
+        <!-- Terrain Material Icons -->
+        <file alias="terrain_grassland.png">assets/terrain_grassland.png</file>
+        <file alias="terrain_beach.png">assets/terrain_beach.png</file>
+        <file alias="terrain_swamp.png">assets/terrain_swamp.png</file>
+        <file alias="terrain_snow.png">assets/terrain_snow.png</file>
+        <file alias="terrain_moon.png">assets/terrain_moon.png</file>
+
+        <!-- Terrain Texture Tiles -->
+        <file alias="terrain/grass_top.png">assets/terrain/grass_top.png</file>
+        <file alias="terrain/dirt_fill.png">assets/terrain/dirt_fill.png</file>
+        <file alias="terrain/beach_top.png">assets/terrain/beach_top.png</file>
+        <file alias="terrain/beach_fill.png">assets/terrain/beach_fill.png</file>
+        <file alias="terrain/swamp_top.png">assets/terrain/swamp_top.png</file>
+        <file alias="terrain/swamp_fill.png">assets/terrain/swamp_fill.png</file>
+        <file alias="terrain/snow_top.png">assets/terrain/snow_top.png</file>
+        <file alias="terrain/snow_fill.png">assets/terrain/snow_fill.png</file>
+        <file alias="terrain/moon_top.png">assets/terrain/moon_top.png</file>
+        <file alias="terrain/moon_fill.png">assets/terrain/moon_fill.png</file>
     </qresource>
 </RCC>

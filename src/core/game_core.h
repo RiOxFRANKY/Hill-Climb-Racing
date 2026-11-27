@@ -12,7 +12,8 @@ class GameCore {
 public:
     GameCore() = default;
 
-    void loadCourse(const QString &resourcePath = QStringLiteral(":/assets/terrain_10km.json"), bool isMoon = false);
+    void loadCourse(const QString &resourcePath = QStringLiteral(":/assets/terrain_10km.json"));
+    void generateCourse(quint32 seed, int map = 0);
     void resetGame();
     void tick(double frameTime);
     void updatePhysics(double dt);
@@ -24,6 +25,14 @@ public:
     void clearKeys();
     [[nodiscard]] bool isKeyPressed(int key) const;
     void togglePause();
+
+    // On-screen pedals, held by touch or mouse alongside the keyboard.
+    enum class Pedal { Gas, Brake, Boost };
+    void setPedal(Pedal pedal, bool down);
+
+    [[nodiscard]] bool accelerating() const;
+    [[nodiscard]] bool reversing() const;
+    [[nodiscard]] bool boosting() const;
 
     [[nodiscard]] const Terrain::TerrainManager &terrain() const { return m_terrain; }
     [[nodiscard]] Terrain::TerrainManager &terrain() { return m_terrain; }
@@ -42,13 +51,14 @@ public:
     [[nodiscard]] bool isFinished() const { return m_finished; }
     [[nodiscard]] const QString &gameOverReason() const { return m_gameOverReason; }
     [[nodiscard]] const QSet<int> &keys() const { return m_keys; }
-    
-    [[nodiscard]] bool isMoonLevel() const { return m_isMoon; }
 
 private:
     Terrain::TerrainManager m_terrain;
     Vehicle::VehicleEntity m_vehicle;
     QSet<int> m_keys;
+    bool m_gasPedal = false;
+    bool m_brakePedal = false;
+    bool m_boostPedal = false;
 
     double m_cameraX = 0.0;
     double m_cameraY = 0.0;
@@ -62,7 +72,6 @@ private:
     bool m_gameOver = false;
     bool m_finished = false;
     QString m_gameOverReason;
-    bool m_isMoon = false;
 };
 
 } // namespace Core

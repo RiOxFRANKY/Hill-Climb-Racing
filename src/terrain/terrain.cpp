@@ -1,4 +1,5 @@
 #include "terrain.h"
+#include "procedural.h"
 #include "../physics/physics.h"
 
 #include <QFile>
@@ -6,29 +7,44 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QVarLengthArray>
-#include <QtConcurrent>
-#include <QFutureWatcher>
-#include <QDebug>
-#include <QObject>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
-// Standalone function that reads the file on the background thread
-QJsonDocument parseTerrainJson(const QString& filePath) {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        qWarning() << "Could not open terrain file:" << filePath;
-        return QJsonDocument(); 
-    }
-    return QJsonDocument::fromJson(file.readAll());
-}
-
 namespace Terrain {
 
 constexpr double DesignWidth = 1920.0;
-constexpr double FuelSpacing = 250.0 * Physics::PixelsPerMetre;
+constexpr double Metre = Physics::PixelsPerMetre;
+
+// Fuel can spacing. Fuel burns by time (see GameCore::updatePhysics), so a
+// metre of climbing costs more than a metre of flat ground, a metre of
+// downhill less, and bumpy ground (rollers, ledges) more because it slows the
+// car. The next can goes where a driver on the gas would have used about the
+// same fuel since the last one, measured in "flat metres": the aim is to
+// reach every can with roughly 10-20% of the tank left. These numbers were
+// tuned with a headless drive over several seeds.
+constexpr double FuelBudget = 650.0;     // flat metres between cans
+constexpr double ClimbCost = 2.0;        // extra cost per metre, per unit of uphill gradient
+constexpr double DescentSaving = 1.2;    // saving per metre, per unit of downhill gradient
+constexpr double BumpCost = 6.0;         // extra cost per metre, per unit of gradient change
+constexpr double MinCostPerMetre = 0.6;
+
+// Coin groups are worth more further along the course. roll is in [0, 1).
+int coinValueAt(double x, double roll)
+{
+    const double km = std::max(0.0, x / Metre) / 1000.0;
+    const double chance500 = 0.15 * Physics::clampValue((km - 5.0) / 4.0, 0.0, 1.0);
+    const double chance100 = 0.35 * Physics::clampValue((km - 2.5) / 4.0, 0.0, 1.0);
+    const double chance25 = 0.45 * Physics::clampValue(km / 2.0, 0.0, 1.0);
+    if (roll < chance500)
+        return 500;
+    if (roll < chance500 + chance100)
+        return 100;
+    if (roll < chance500 + chance100 + chance25)
+        return 25;
+    return 5;
+}
 
 quint32 hashValue(qint64 value)
 {
@@ -40,76 +56,116 @@ quint32 hashValue(qint64 value)
 
 void TerrainManager::loadCourse(const QString &resourcePath)
 {
-    // 1. Create a watcher to monitor the background thread
-    QFutureWatcher<QJsonDocument>* watcher = new QFutureWatcher<QJsonDocument>();
+    QFile file(resourcePath);
+    if (!file.open(QIODevice::ReadOnly))
+        qFatal("Missing course data %s", qPrintable(resourcePath));
+    const QJsonObject course = QJsonDocument::fromJson(file.readAll()).object();
+    m_fuelBudgetScale = 1.0;
 
-    // 2. Extract coordinates when the thread finishes loading the JSON
-    QObject::connect(watcher, &QFutureWatcher<QJsonDocument>::finished, [this, watcher, resourcePath]() {
-        QJsonDocument loadedDoc = watcher->result();
-        
-        if (loadedDoc.isNull()) {
-            qFatal("Missing or invalid course data %s", qPrintable(resourcePath));
+    m_pixelsPerMetre = course.value(QStringLiteral("pixels_per_metre")).toDouble(Physics::PixelsPerMetre);
+    const double scale = m_pixelsPerMetre;
+    m_spawnX = course.value(QStringLiteral("spawn_x_m")).toDouble() * scale;
+    m_finishX = course.value(QStringLiteral("finish_x_m")).toDouble() * scale;
+
+    m_chains.clear();
+    const QJsonArray polylines = course.value(QStringLiteral("polylines_m")).toArray();
+    for (const QJsonValue &polylineValue : polylines) {
+        const QJsonArray polyline = polylineValue.toArray();
+        if (polyline.size() < 2)
+            continue;
+        TerrainChain chain;
+        chain.startX = polyline.at(0).toArray().at(0).toDouble() * scale;
+        chain.step = (polyline.at(1).toArray().at(0).toDouble()
+                      - polyline.at(0).toArray().at(0).toDouble()) * scale;
+        chain.heights.reserve(polyline.size());
+        for (const QJsonValue &pointValue : polyline) {
+            const QJsonArray point = pointValue.toArray();
+            const double x = point.at(0).toDouble() * scale;
+            if (std::abs(x - (chain.startX + chain.step * chain.heights.size())) > 1e-6)
+                qFatal("Course chain is not uniformly sampled");
+            chain.heights.append(point.at(1).toDouble() * scale);
         }
-        
-        const QJsonObject course = loadedDoc.object();
+        m_chains.append(chain);
+    }
 
-        m_pixelsPerMetre = course.value(QStringLiteral("pixels_per_metre")).toDouble(Physics::PixelsPerMetre);
-        const double scale = m_pixelsPerMetre;
-        m_spawnX = course.value(QStringLiteral("spawn_x_m")).toDouble() * scale;
-        m_finishX = course.value(QStringLiteral("finish_x_m")).toDouble() * scale;
+    m_gaps.clear();
+    for (const QJsonValue &gapValue : course.value(QStringLiteral("gap_ranges_m")).toArray()) {
+        const QJsonArray gap = gapValue.toArray();
+        m_gaps.append({gap.at(0).toDouble() * scale, gap.at(1).toDouble() * scale});
+    }
 
-        m_chains.clear();
-        const QJsonArray polylines = course.value(QStringLiteral("polylines_m")).toArray();
-        for (const QJsonValue &polylineValue : polylines) {
-            const QJsonArray polyline = polylineValue.toArray();
-            if (polyline.size() < 2)
-                continue;
-            TerrainChain chain;
-            chain.startX = polyline.at(0).toArray().at(0).toDouble() * scale;
-            chain.step = (polyline.at(1).toArray().at(0).toDouble()
-                          - polyline.at(0).toArray().at(0).toDouble()) * scale;
-            chain.heights.reserve(polyline.size());
-            for (const QJsonValue &pointValue : polyline) {
-                const QJsonArray point = pointValue.toArray();
-                const double x = point.at(0).toDouble() * scale;
-                if (std::abs(x - (chain.startX + chain.step * chain.heights.size())) > 1e-6)
-                    qFatal("Course chain is not uniformly sampled");
-                chain.heights.append(point.at(1).toDouble() * scale);
-            }
-            m_chains.append(chain);
-        }
+    m_sections.clear();
+    const QJsonArray bounds = course.value(QStringLiteral("section_bounds_m")).toArray();
+    const QJsonArray names = course.value(QStringLiteral("section_names")).toArray();
+    for (int i = 0; i < bounds.size(); ++i) {
+        const QJsonArray range = bounds.at(i).toArray();
+        m_sections.append({range.at(0).toDouble() * scale, range.at(1).toDouble() * scale,
+                           names.at(i).toString().toUpper()});
+    }
+}
 
-        m_gaps.clear();
-        for (const QJsonValue &gapValue : course.value(QStringLiteral("gap_ranges_m")).toArray()) {
-            const QJsonArray gap = gapValue.toArray();
-            m_gaps.append({gap.at(0).toDouble() * scale, gap.at(1).toDouble() * scale});
-        }
+void TerrainManager::generateCourse(quint32 seed, int map)
+{
+    Procedural::Settings settings = Procedural::Settings::forMap(map, seed);
+    settings.step = 0.25;  // 20 px, the same spacing as the JSON course
+    const Procedural::Course course = Procedural::generate(settings);
 
-        m_sections.clear();
-        const QJsonArray bounds = course.value(QStringLiteral("section_bounds_m")).toArray();
-        const QJsonArray names = course.value(QStringLiteral("section_names")).toArray();
-        for (int i = 0; i < bounds.size(); ++i) {
-            const QJsonArray range = bounds.at(i).toArray();
-            m_sections.append({range.at(0).toDouble() * scale, range.at(1).toDouble() * scale,
-                               names.at(i).toString().toUpper()});
-        }
-        
-        qDebug() << "Terrain successfully loaded and arrays populated in background!";
-        watcher->deleteLater(); // Clean up memory
-    });
+    // The hardest maps are steep almost everywhere, which costs more fuel
+    // than the gradient estimate in nextFuelX accounts for, so their cans
+    // come a little sooner: 1.0, 0.99, 0.96, 0.91 and 0.84 of the budget.
+    const double hardness = std::clamp(map, 0, Procedural::Settings::MapCount - 1);
+    m_fuelBudgetScale = 1.0 - 0.01 * hardness * hardness;
 
-    // 3. Start the heavy parsing function on a separate thread
-    qDebug() << "Starting background JSON processing for:" << resourcePath;
-    QFuture<QJsonDocument> future = QtConcurrent::run(parseTerrainJson, resourcePath);
-    watcher->setFuture(future);
+    m_pixelsPerMetre = Physics::PixelsPerMetre;
+    const double scale = m_pixelsPerMetre;
+    m_spawnX = course.spawnX * scale;
+    m_finishX = course.finishX * scale;
+
+    m_chains.clear();
+    for (const Procedural::Chain &source : course.chains) {
+        if (source.heights.size() < 2)
+            continue;
+        TerrainChain chain;
+        chain.startX = source.startX * scale;
+        chain.step = course.step * scale;
+        chain.heights.reserve(static_cast<qsizetype>(source.heights.size()));
+        for (double height : source.heights)
+            chain.heights.append(height * scale);
+        m_chains.append(chain);
+    }
+
+    m_gaps.clear();
+    for (const Procedural::Ravine &ravine : course.ravines)
+        m_gaps.append({ravine.takeoff * scale, ravine.landing * scale});
+
+    m_sections.clear();
+    for (const Procedural::Zone &zone : course.zones)
+        m_sections.append({zone.start * scale, zone.end * scale, QString::fromStdString(zone.name)});
+}
+
+void TerrainManager::setSpawnX(double x)
+{
+    x = Physics::clampValue(x, 0.0, m_finishX - 400.0);
+    if (const TerrainGap *gap = gapAt(x))
+        x = gap->end + 200.0;
+    m_spawnX = x;
 }
 
 void TerrainManager::resetPickups(double spawnX)
 {
+    // Pickups are always laid out from the start of the course, so every can
+    // and coin group sits at the same place on a given course however far
+    // along the car starts. Anything behind the car is then dropped.
     m_pickups.clear();
-    m_nextPickupX = spawnX + 400.0;
-    m_nextFuelX = spawnX + FuelSpacing * 0.6;
+    m_nextPickupX = 22.0 * Metre;
+    // The first can comes a little sooner: the car starts from a standstill.
+    m_nextFuelX = nextFuelX(0.0, 0.85 * FuelBudget * m_fuelBudgetScale);
+    m_coinGroup = 0;
     ensurePickupsAhead(spawnX - 560.0);
+    const double keepFrom = spawnX - 300.0;
+    m_pickups.erase(std::remove_if(m_pickups.begin(), m_pickups.end(),
+                                   [keepFrom](const Pickup &p) { return p.position.x() < keepFrom; }),
+                    m_pickups.end());
 }
 
 const TerrainChain *TerrainManager::chainAt(double x) const
@@ -273,7 +329,7 @@ void TerrainManager::updatePickups(const QPointF &chassisPos, const QPointF &hea
             || QPointF::dotProduct(deltaHead, deltaHead) < 64.0 * 64.0) {
             pickup.collected = true;
             if (pickup.type == Pickup::Type::Coin) {
-                ++coins;
+                coins += pickup.value;
             } else {
                 fuel = 100.0;
                 score += 250;
@@ -288,41 +344,91 @@ void TerrainManager::updatePickups(const QPointF &chassisPos, const QPointF &hea
     }
 }
 
+double TerrainManager::nextFuelX(double from, double budget) const
+{
+    // Walk forward a metre at a time, charging each metre by the gradient
+    // averaged over the car's length and by how fast that gradient changes,
+    // until the fuel budget is spent.
+    constexpr double Step = Metre;
+    constexpr double HalfCar = 2.25 * Metre;
+    auto gradientAt = [this](double x) {
+        return (surfaceHeight(x + HalfCar) - surfaceHeight(x - HalfCar)) / (2.0 * HalfCar);
+    };
+    double cost = 0.0;
+    double x = from;
+    double gradient = gradientAt(x);
+    while (cost < budget && x < m_finishX) {
+        const double nextGradient = gradientAt(x + Step);
+        cost += std::max(MinCostPerMetre, 1.0 + ClimbCost * std::max(0.0, gradient)
+                                              - DescentSaving * std::max(0.0, -gradient)
+                                              + BumpCost * std::abs(nextGradient - gradient));
+        gradient = nextGradient;
+        x += Step;
+    }
+    return x;
+}
+
 void TerrainManager::ensurePickupsAhead(double cameraX)
 {
+    constexpr double CoinSpacing = 55.0;
     const double horizon = std::min(cameraX + DesignWidth + 900.0, m_finishX - 400.0);
-    while (m_nextPickupX < horizon) {
-        bool nearGap = false;
+
+    // Moves [x, x + span] past any ravine, keeping clear of its run-up and landing.
+    auto clearOfGaps = [this](double x, double span) {
         for (const TerrainGap &gap : m_gaps) {
-            if (m_nextPickupX > gap.start - 500.0 && m_nextPickupX < gap.end + 150.0) {
-                m_nextPickupX = gap.end + 150.0;
-                nearGap = true;
-            }
+            if (x + span > gap.start - 500.0 && x < gap.end + 150.0)
+                x = gap.end + 150.0;
         }
-        if (nearGap)
+        return x;
+    };
+
+    // Coin groups and fuel cans are placed in order along the course, so the
+    // pickup list stays sorted by x.
+    while (std::min(m_nextPickupX, m_nextFuelX) < horizon) {
+        if (m_nextFuelX <= m_nextPickupX) {
+            const double x = clearOfGaps(m_nextFuelX, 0.0);
+            if (x != m_nextFuelX) {
+                m_nextFuelX = x;
+                continue;
+            }
+            m_pickups.push_back({Pickup::Type::Fuel, QPointF(x, surfaceHeight(x) + 65.0), false, 0});
+            m_nextFuelX = nextFuelX(x, FuelBudget * m_fuelBudgetScale);
+            // Leave the can on its own rather than inside a row of coins.
+            m_nextPickupX = std::max(m_nextPickupX, x + 4.0 * Metre);
             continue;
-
-        const int group = static_cast<int>(m_nextPickupX / 420.0);
-        const bool placeFuel = m_nextPickupX >= m_nextFuelX;
-
-        if (placeFuel) {
-            m_nextFuelX += FuelSpacing;
-            m_pickups.push_back({Pickup::Type::Fuel,
-                                 QPointF(m_nextPickupX,
-                                         surfaceHeight(m_nextPickupX) + 65.0),
-                                 false});
-            m_nextPickupX += 430.0;
-        } else {
-            const int count = 3 + (group % 3);
-            for (int i = 0; i < count; ++i) {
-                const double x = m_nextPickupX + i * 55.0;
-                const double arc = std::sin((i + 1.0) / (count + 1.0) * Physics::Pi) * 32.0;
-                m_pickups.push_back({Pickup::Type::Coin,
-                                     QPointF(x, surfaceHeight(x) + 68.0 + arc),
-                                     false});
-            }
-            m_nextPickupX += count * 55.0 + 285.0;
         }
+
+        const quint32 hash = hashValue(m_coinGroup);
+        const int count = 5 + static_cast<int>(hash % 4);  // 5 to 8 coins
+        const double span = (count - 1) * CoinSpacing;
+        const double start = clearOfGaps(m_nextPickupX, span);
+        if (start != m_nextPickupX) {
+            m_nextPickupX = start;
+            continue;
+        }
+        if (start + span > m_nextFuelX - 3.0 * Metre && start < m_nextFuelX + 4.0 * Metre) {
+            // The group would crowd the next fuel can; start after it instead.
+            m_nextPickupX = m_nextFuelX + 4.0 * Metre;
+            continue;
+        }
+
+        // The row follows the ground: each coin sits a fixed distance out
+        // along the ground's normal, and neighbours are evenly spaced along
+        // the slope rather than horizontally.
+        constexpr double CoinLift = 70.0;
+        const int value = coinValueAt(start, ((hash >> 8) & 0xFFFF) / 65536.0);
+        double x = start;
+        for (int i = 0; i < count; ++i) {
+            const double slope = surfaceSlope(x);
+            const double stretch = std::sqrt(1.0 + slope * slope);
+            const QPointF normal(-slope / stretch, 1.0 / stretch);  // y is up
+            m_pickups.push_back({Pickup::Type::Coin, QPointF(x, surfaceHeight(x)) + normal * CoinLift, false, value});
+            x += CoinSpacing / stretch;
+        }
+        ++m_coinGroup;
+        // 45 to 110 m of open road before the next group.
+        const double gap = 45.0 + 65.0 * (((hash >> 24) & 0xFF) / 255.0);
+        m_nextPickupX = start + span + gap * Metre;
     }
 }
 

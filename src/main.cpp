@@ -1,25 +1,26 @@
-#include "gamewidget.h"
+#include "quick/game_controller.h"
+#include "quick/sprite_provider.h"
 
-#include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QDir>
-#include <QFont>
-#include <QIcon>
-#include <QPalette>
-#include <QStyleFactory>
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQuickItem>
+#include <QQuickItemGrabResult>
+#include <QQuickWindow>
 #include <QTimer>
+
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
 
 int main(int argc, char *argv[])
 {
-    // This game intentionally uses an exact 1920x1080 render surface instead of
-    // allowing Windows display scaling to turn it into (for example) 2400x1350.
-    qputenv("QT_FONT_DPI", QByteArrayLiteral("96"));
-
-    QApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Hill Climb Qt"));
     app.setOrganizationName(QStringLiteral("HCR"));
-    app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("A basic hill-climb driving game made with Qt."));
@@ -29,25 +30,93 @@ int main(int argc, char *argv[])
         QStringLiteral("Save a 1920x1080 preview frame and exit."),
         QStringLiteral("file"));
     parser.addOption(screenshotOption);
+    QCommandLineOption playOption(
+        QStringList{QStringLiteral("p"), QStringLiteral("play")},
+        QStringLiteral("Skip the start menu and begin a race straight away."));
+    parser.addOption(playOption);
+    QCommandLineOption seedOption(
+        QStringLiteral("seed"),
+        QStringLiteral("Seed for the procedural course (default 1)."),
+        QStringLiteral("number"), QStringLiteral("1"));
+    parser.addOption(seedOption);
+    QCommandLineOption courseOption(
+        QStringLiteral("course"),
+        QStringLiteral("Drive a course from a JSON file instead, e.g. :/assets/terrain_10km.json."),
+        QStringLiteral("file"));
+    parser.addOption(courseOption);
+    QCommandLineOption startAtOption(
+        QStringLiteral("start-at"),
+        QStringLiteral("Start this many metres along the course, to try a later zone."),
+        QStringLiteral("metres"), QStringLiteral("0"));
+    parser.addOption(startAtOption);
+    QCommandLineOption menuPageOption(
+        QStringLiteral("menu-page"),
+        QStringLiteral("Open the start menu on this page: main, mode or map."),
+        QStringLiteral("page"), QStringLiteral("main"));
+    parser.addOption(menuPageOption);
+    QCommandLineOption mapOption(
+        QStringLiteral("map"),
+        QStringLiteral("Start on this map: 1 Grazing the Grass (default), 2 Beachday, 3 Swampy Vibe, "
+                       "4 Arctic Elegance, 5 The Real Excursion."),
+        QStringLiteral("number"), QStringLiteral("1"));
+    parser.addOption(mapOption);
     parser.process(app);
 
-    QPalette palette;
-    palette.setColor(QPalette::Window, QColor(16, 30, 48));
-    palette.setColor(QPalette::WindowText, Qt::white);
-    app.setPalette(palette);
+    bool seedOk = false;
+    const quint32 seed = parser.value(seedOption).toUInt(&seedOk);
+    bool startOk = false;
+    const double startAt = parser.value(startAtOption).toDouble(&startOk);
+    const QString menuPage = parser.value(menuPageOption);
+    bool mapOk = false;
+    const int map = parser.value(mapOption).toInt(&mapOk);
+    if (!seedOk || !startOk || startAt < 0.0 || !mapOk || map < 1 || map > 5
+        || !QStringList{QStringLiteral("main"), QStringLiteral("mode"), QStringLiteral("map")}.contains(menuPage))
+        parser.showHelp(1);
+    GameController::setCourse(parser.value(courseOption), seed, startAt, map - 1);
 
-    QFont defaultFont(QStringLiteral("Segoe UI"));
-    defaultFont.setStyleHint(QFont::SansSerif);
-    app.setFont(defaultFont);
+#ifdef Q_OS_ANDROID
+    // The game is designed for a 16:9 landscape screen.
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        constexpr jint SensorLandscape = 6; // ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity.callMethod<void>("setRequestedOrientation", "(I)V", SensorLandscape);
+    });
+#endif
 
-    GameWidget game;
-    game.show();
+    // The scene is scaled to fit the screen; curve-rendered text keeps the
+    // pixel fonts sharp at any scale.
+    QQuickWindow::setTextRenderType(QQuickWindow::CurveTextRendering);
 
-    if (parser.isSet(screenshotOption)) {
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("sprites"), new SpriteProvider);
+    engine.setInitialProperties({{QStringLiteral("startInGame"), parser.isSet(playOption)},
+                                 {QStringLiteral("startMenuPage"), menuPage}});
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
+                     [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+    engine.loadFromModule("HillClimb", "Main");
+
+    QObject *root = engine.rootObjects().isEmpty() ? nullptr : engine.rootObjects().constFirst();
+    auto *stage = root ? root->findChild<QQuickItem *>(QStringLiteral("stage")) : nullptr;
+    if (stage && parser.isSet(screenshotOption)) {
+        // Grab the design surface itself so the frame is 1920x1080 whatever
+        // size the window ended up.
         const QString filePath = QDir::current().absoluteFilePath(parser.value(screenshotOption));
-        QTimer::singleShot(1200, &game, [&app, &game, filePath] {
-            const bool saved = game.grab().save(filePath);
-            app.exit(saved ? 0 : 2);
+        QTimer::singleShot(1200, stage, [&app, stage, filePath] {
+            // The grab size is in logical pixels; undo display scaling.
+            const QSize frameSize(1920, 1080);
+            const qreal dpr = stage->window()->effectiveDevicePixelRatio();
+            const QSharedPointer<QQuickItemGrabResult> grab =
+                stage->grabToImage(QSize(qRound(frameSize.width() / dpr), qRound(frameSize.height() / dpr)));
+            if (!grab) {
+                app.exit(2);
+                return;
+            }
+            QObject::connect(grab.data(), &QQuickItemGrabResult::ready, &app, [&app, grab, filePath, frameSize] {
+                QImage image = grab->image();
+                if (image.size() != frameSize)
+                    image = image.scaled(frameSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                app.exit(image.save(filePath) ? 0 : 2);
+            });
         });
     }
 

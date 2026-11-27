@@ -1,28 +1,23 @@
 #include "game_core.h"
-#include "../physics/physics.h"
-
 #include <QtGlobal>
 #include <cmath>
 #include <algorithm>
 
 namespace Core {
 
-void GameCore::loadCourse(const QString &resourcePath, bool isMoon)
+void GameCore::loadCourse(const QString &resourcePath)
 {
-    m_isMoon = isMoon;
-
-    if (isMoon) {
-        Physics::setPlanetGravity(9.81 / 6.0);
-    } else {
-        Physics::setPlanetGravity(9.81);
-    }
-    
     m_terrain.loadCourse(resourcePath);
+}
+
+void GameCore::generateCourse(quint32 seed, int map)
+{
+    m_terrain.generateCourse(seed, map);
 }
 
 void GameCore::resetGame()
 {
-    m_keys.clear();
+    clearKeys();
     const double spawnX = m_terrain.spawnX();
     m_vehicle.reset(spawnX, m_terrain.surfaceHeight(spawnX));
     m_gameOverReason.clear();
@@ -100,9 +95,9 @@ void GameCore::updatePhysics(double dt)
     if (dt <= 0.0)
         return;
 
-    const bool accelerate = isKeyPressed(Qt::Key_Right) || isKeyPressed(Qt::Key_D);
-    const bool reverse = isKeyPressed(Qt::Key_Left) || isKeyPressed(Qt::Key_A);
-    const bool boost = isKeyPressed(Qt::Key_Space);
+    const bool accelerate = accelerating();
+    const bool reverse = reversing();
+    const bool boost = boosting();
     const double throttle = (accelerate ? 1.0 : 0.0) - (reverse ? 1.0 : 0.0);
 
     m_vehicle.setHeadHit(false);
@@ -111,8 +106,13 @@ void GameCore::updatePhysics(double dt)
     for (int i = 0; i < Physics::PhysicsSubsteps; ++i)
         m_vehicle.stepPhysics(h, throttle, boost, m_terrain);
 
-    if (throttle != 0.0 && m_vehicle.fuel() > 0.0) {
-        m_vehicle.consumeFuel(dt * (boost ? 2.25 : 0.82));
+    // The engine burns fuel the whole time, so stopping or crawling still
+    // costs fuel. Per second, as a percentage of the tank: 1.0 idling, 2.4
+    // on the gas (about 42 s, or 580 m at the car's usual 14 m/s), 4.0
+    // boosting (more fuel per metre than plain gas).
+    if (m_vehicle.fuel() > 0.0) {
+        const double burn = boost && throttle > 0.0 ? 4.0 : throttle != 0.0 ? 2.4 : 1.0;
+        m_vehicle.consumeFuel(dt * burn);
     }
 
     if (m_vehicle.chassis().position.x() < 250.0) {
@@ -149,11 +149,12 @@ void GameCore::updatePhysics(double dt)
 
     if (!m_gameOverReason.isEmpty()) {
         m_gameOver = true;
-        m_keys.clear();
+        clearKeys();
     }
 
     const double metres = std::max(0.0, m_vehicle.chassis().position.x()) / m_terrain.pixelsPerMetre();
-    m_score = std::max(m_score, static_cast<int>(metres * 2.5) + m_coins * 100);
+    // m_coins is the total value of the coins collected, not how many.
+    m_score = std::max(m_score, static_cast<int>(metres * 2.5) + m_coins);
 }
 
 void GameCore::handleKeyPress(int key)
@@ -169,6 +170,9 @@ void GameCore::handleKeyRelease(int key)
 void GameCore::clearKeys()
 {
     m_keys.clear();
+    m_gasPedal = false;
+    m_brakePedal = false;
+    m_boostPedal = false;
 }
 
 bool GameCore::isKeyPressed(int key) const
@@ -180,8 +184,41 @@ void GameCore::togglePause()
 {
     if (!m_gameOver) {
         m_paused = !m_paused;
-        m_keys.clear();
+        clearKeys();
     }
+}
+
+void GameCore::setPedal(Pedal pedal, bool down)
+{
+    // Like key presses, pedals cannot be pushed while paused or after the run ends.
+    if (down && (m_paused || m_gameOver))
+        return;
+    switch (pedal) {
+    case Pedal::Gas:
+        m_gasPedal = down;
+        break;
+    case Pedal::Brake:
+        m_brakePedal = down;
+        break;
+    case Pedal::Boost:
+        m_boostPedal = down;
+        break;
+    }
+}
+
+bool GameCore::accelerating() const
+{
+    return m_gasPedal || isKeyPressed(Qt::Key_Right) || isKeyPressed(Qt::Key_D);
+}
+
+bool GameCore::reversing() const
+{
+    return m_brakePedal || isKeyPressed(Qt::Key_Left) || isKeyPressed(Qt::Key_A);
+}
+
+bool GameCore::boosting() const
+{
+    return m_boostPedal || isKeyPressed(Qt::Key_Space);
 }
 
 } // namespace Core
